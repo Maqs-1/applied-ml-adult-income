@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+models/*.joblib
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+.ipynb_checkpoints/

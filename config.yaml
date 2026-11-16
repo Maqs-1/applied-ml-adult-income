@@ -1,0 +1,38 @@
+# Configuration centrale du projet (Adult / Census Income)
+seed: 42
+
+data:
+  openml_name: adult
+  openml_version: 2
+  raw_path: data/adult_raw.parquet
+  splits_dir: data/splits
+  test_size: 0.20      # part du total
+  val_size: 0.20       # part du total
+  positive_label: ">50K"
+
+features:
+  sensitive: sex
+  sensitive_secondary: race
+  # colonnes retirées : fnlwgt (poids d'échantillonnage du recensement, pas une caractéristique individuelle)
+  # education (redondante avec education-num)
+  drop: [fnlwgt, education]
+  # attributs sensibles exclus des entrées du modèle ("fairness through unawareness"),
+  # conservés à part pour l'audit d'équité et la mitigation
+  exclude_from_model: [sex, race]
+
+cv:
+  n_splits: 5
+
+optuna:
+  n_trials: 40
+  metric: average_precision   # PR-AUC
+  timeout_s: 1800
+
+models: [logreg, random_forest, xgboost]
+
+paths:
+  runs_dir: runs
+  models_dir: models
+  figures_dir: figures
+  trials_log: runs/trials_log.csv
+  results: runs/results.json
