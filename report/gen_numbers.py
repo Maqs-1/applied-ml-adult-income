@@ -77,7 +77,7 @@ def main():
     out.append("\\newcommand{\\TabTest}{" + "\n".join(rows) + "}\n")
     ft = res["test"][final]["at_val_threshold"]
     for k in ["pr_auc", "roc_auc", "f1", "precision", "recall", "balanced_acc", "brier", "ece"]:
-        out.append(macro("Fin" + k.replace("_", "").capitalize(), f3(ft[k])))
+        out.append(macro("Fin" + k.replace("_", "").replace("f1", "fone").capitalize(), f3(ft[k])))
     out.append(macro("FinThr", f3(ft["threshold"])))
     out.append(macro("FinFHalf", f3(res["test"][final]["at_0.5"]["f1"])))
     out.append(macro("FinRecallHalf", f3(res["test"][final]["at_0.5"]["recall"])))
@@ -147,6 +147,37 @@ def main():
         rows.append(f"{esc(r['model'])} & {r['trial']} & {r['cv_pr_auc_mean']} & {r['cv_pr_auc_std']} & "
                     f"{r['cv_roc_auc_mean']} & {r['cv_f1_mean']} & {r['duration_s']} \\\\")
     out.append("\\newcommand{\\TabLog}{" + "\n".join(rows) + "}\n")
+
+
+    # Macros supplémentaires (prose du rapport)
+    for tag, key in [("B", "before"), ("A", "after_threshold_optimizer")]:
+        for g, gl in [("F", "Female"), ("M", "Male")]:
+            bg = fair[key]["by_group"][gl]
+            for mname, mk in [("Sel", "selection_rate"), ("Tpr", "tpr"), ("Fpr", "fpr"), ("Prec", "precision"), ("Acc", "accuracy")]:
+                out.append(macro(f"{mname}{g}{tag}", f3(bg[mk])))
+    for short, m in [("Log", "logreg"), ("Rf", "random_forest"), ("Xgb", "xgboost")]:
+        t = res["test"][m]["at_val_threshold"]
+        out.append(macro(f"TestPr{short}", f3(t["pr_auc"])))
+        out.append(macro(f"TestRoc{short}", f3(t["roc_auc"])))
+        out.append(macro(f"TestFone{short}", f3(t["f1"])))
+        out.append(macro(f"CvPr{short}", f3(tr[m]["cv"]["pr_auc"])))
+        out.append(macro(f"ValPr{short}", f3(tr[m]["val_at_thr"]["pr_auc"])))
+        out.append(macro(f"Thr{short}", f3(tr[m]["val_threshold"])))
+    b = tr["baseline_dummy"]["val"]
+    out.append(macro("BasePr", f3(b["pr_auc"])))
+    out.append(macro("BaseBrier", f3(b["brier"])))
+    out.append(macro("BaseAcc", f3(b["accuracy"])))
+    out.append(macro("FinAcc", f3(ft["accuracy"])))
+    out.append(macro("CvStdXgb", f3(float(__import__("statistics").pstdev(
+        [float(r["cv_pr_auc_mean"]) for r in csv.DictReader(open(RUNS / "trials_log.csv", encoding="utf-8"))
+         if r["model"] == "xgboost" and r["state"] == "COMPLETE"])))))
+
+    out.append(macro("EceLog", f3(res["test"]["logreg"]["at_val_threshold"]["ece"])))
+    out.append(macro("BrierLog", f3(res["test"]["logreg"]["at_val_threshold"]["brier"])))
+    out.append(macro("RealGap", f3(eda["positive_rate_by_sex"]["Male"] - eda["positive_rate_by_sex"]["Female"])))
+    import joblib
+    _pipe = joblib.load(ROOT / "models" / f"{final}.joblib")["pipeline"]
+    out.append(macro("NCols", len(_pipe[:-1][-1].get_feature_names_out())))
 
     (ROOT / "report" / "generated.tex").write_text("".join(out), encoding="utf-8")
     print("report/generated.tex écrit")

@@ -1,0 +1,257 @@
+\newcommand{\FinalModel}{XGBoost}
+\newcommand{\NRows}{48\,842}
+\newcommand{\NDup}{52}
+\newcommand{\PosRate}{23.9}
+\newcommand{\PosF}{10.9}
+\newcommand{\PosM}{30.4}
+\newcommand{\ShareF}{33.1}
+\newcommand{\CapZero}{91.7}
+\newcommand{\NTrain}{29\,274}
+\newcommand{\NVal}{9\,758}
+\newcommand{\NTest}{9\,758}
+\newcommand{\MissWork}{2799}
+\newcommand{\MissOcc}{2809}
+\newcommand{\MissCountry}{857}
+\newcommand{\TabCV}{Régression logistique & 40 & 0.734 & 0.898 & 0.727 & 0.676 & 0.296 \\
+Random Forest & 40 & 0.805 & 0.916 & 0.800 & 0.710 & 0.673 \\
+XGBoost & 40 & 0.826 & 0.927 & 0.816 & 0.722 & 0.653 \\}
+\newcommand{\TabTest}{Baseline (prévalence) (val.) & 0.239 & 0.500 & 0.000 & -- & 0.000 & 0.500 & 0.182 & -- \\
+Régression logistique & 0.740 & 0.902 & 0.681 & 0.597 & 0.794 & 0.813 & 0.105 & 0.654 \\
+Random Forest & 0.826 & 0.926 & 0.729 & 0.717 & 0.742 & 0.825 & 0.113 & 0.704 \\
+\textbf{XGBoost} & 0.845 & 0.936 & 0.741 & 0.706 & 0.779 & 0.839 & 0.105 & 0.722 \\}
+\newcommand{\FinPrauc}{0.845}
+\newcommand{\FinRocauc}{0.936}
+\newcommand{\FinFone}{0.741}
+\newcommand{\FinPrecision}{0.706}
+\newcommand{\FinRecall}{0.779}
+\newcommand{\FinBalancedacc}{0.839}
+\newcommand{\FinBrier}{0.105}
+\newcommand{\FinEce}{0.106}
+\newcommand{\FinThr}{0.653}
+\newcommand{\FinFHalf}{0.722}
+\newcommand{\FinRecallHalf}{0.877}
+\newcommand{\TabParams}{Régression logistique & \footnotesize C=0.373, class\_weight=None \\
+Random Forest & \footnotesize n\_estimators=250, max\_depth=14, min\_samples\_leaf=5, max\_features=0.5, class\_weight=balanced \\
+XGBoost & \footnotesize reweight=True, n\_estimators=450, learning\_rate=0.0472, max\_depth=5, min\_child\_weight=1.42, subsample=0.75, colsample\_bytree=0.488, reg\_lambda=0.351 \\}
+\newcommand{\CalBrier}{0.105}
+\newcommand{\CalEce}{0.106}
+\newcommand{\CalGap}{+0.106}
+\newcommand{\CalMeanPred}{0.345}
+\newcommand{\CalObs}{0.239}
+\newcommand{\CalIsoBrier}{0.084}
+\newcommand{\CalIsoEce}{0.011}
+\newcommand{\TabCalBins}{1 & 0.002 & 0.000 & +0.002 \\
+2 & 0.009 & 0.002 & +0.007 \\
+3 & 0.025 & 0.004 & +0.020 \\
+4 & 0.057 & 0.021 & +0.036 \\
+5 & 0.123 & 0.045 & +0.078 \\
+6 & 0.270 & 0.099 & +0.171 \\
+7 & 0.485 & 0.245 & +0.240 \\
+8 & 0.674 & 0.373 & +0.301 \\
+9 & 0.837 & 0.660 & +0.177 \\
+10 & 0.972 & 0.945 & +0.027 \\}
+\newcommand{\TabFair}{Avant & Female & 0.110 & 0.703 & 0.037 & 0.699 & 0.934 \\
+Avant & Male & 0.341 & 0.793 & 0.143 & 0.708 & 0.838 \\
+Avant & \textit{global} & 0.264 & 0.779 & 0.102 & 0.706 & 0.870 \\ \midrule
+Après & Female & 0.275 & 0.842 & 0.205 & 0.335 & 0.800 \\
+Après & Male & 0.399 & 0.851 & 0.202 & 0.648 & 0.814 \\
+Après & \textit{global} & 0.358 & 0.849 & 0.203 & 0.568 & 0.809 \\ \midrule}
+\newcommand{\DpdB}{0.231}
+\newcommand{\DprB}{0.323}
+\newcommand{\EodB}{0.106}
+\newcommand{\FoneB}{0.741}
+\newcommand{\AccB}{0.870}
+\newcommand{\DpdA}{0.124}
+\newcommand{\DprA}{0.689}
+\newcommand{\EodA}{0.009}
+\newcommand{\FoneA}{0.681}
+\newcommand{\AccA}{0.809}
+\newcommand{\RaceDpd}{0.180}
+\newcommand{\RaceEod}{0.228}
+\newcommand{\TabRace}{Amer-Indian-Eskimo & 93 & 0.107 & 0.714 & 0.058 \\
+Asian-Pac-Islander & 303 & 0.287 & 0.853 & 0.101 \\
+Black & 937 & 0.130 & 0.724 & 0.037 \\
+Other & 80 & 0.125 & 0.625 & 0.069 \\
+White & 8345 & 0.281 & 0.781 & 0.112 \\}
+\newcommand{\TabShap}{1 & \texttt{is\_married} & 0.608 \\
+2 & \texttt{log\_capital\_net} & 0.568 \\
+3 & \texttt{age\_x\_edu} & 0.561 \\
+4 & \texttt{marital-status\_Married-civ-spouse} & 0.434 \\
+5 & \texttt{age} & 0.340 \\
+6 & \texttt{education-num} & 0.303 \\
+7 & \texttt{hours-per-week} & 0.284 \\
+8 & \texttt{relationship\_Husband} & 0.157 \\
+9 & \texttt{relationship\_Own-child} & 0.138 \\
+10 & \texttt{overtime} & 0.127 \\}
+\newcommand{\TabShapLocal}{vrai positif & 1 & 0.657 & \footnotesize \texttt{is\_married} +0.40; \texttt{education-num} -0.32; \texttt{marital-status\_Married-civ-spouse} +0.29; \texttt{hours-per-week} +0.29 \\
+vrai negatif & 0 & 0.180 & \footnotesize \texttt{is\_married} -0.65; \texttt{marital-status\_Married-civ-spouse} -0.48; \texttt{age\_x\_edu} +0.40; \texttt{education-num} -0.34 \\
+faux positif & 0 & 0.776 & \footnotesize \texttt{occupation\_Other-service} -0.70; \texttt{age\_x\_edu} +0.50; \texttt{is\_married} +0.43; \texttt{education-num} +0.41 \\
+faux negatif & 1 & 0.185 & \footnotesize \texttt{age\_x\_edu} -0.86; \texttt{education-num} -0.84; \texttt{is\_married} +0.40; \texttt{occupation\_Machine-op-inspct} -0.37 \\}
+\newcommand{\NTrialsTotal}{120}
+\newcommand{\TabLog}{logreg & 0 & 0.73336 & 0.0099 & 0.89754 & 0.63877 & 2.8 \\
+logreg & 1 & 0.73353 & 0.00942 & 0.89751 & 0.64239 & 3.2 \\
+logreg & 2 & 0.71815 & 0.00997 & 0.89238 & 0.6031 & 2.1 \\
+logreg & 3 & 0.73093 & 0.00903 & 0.89739 & 0.66871 & 3.4 \\
+logreg & 4 & 0.73326 & 0.00939 & 0.89741 & 0.64339 & 4.2 \\
+logreg & 5 & 0.7261 & 0.00982 & 0.89594 & 0.6667 & 2.3 \\
+logreg & 6 & 0.73122 & 0.00929 & 0.89751 & 0.66874 & 3.2 \\
+logreg & 7 & 0.72326 & 0.00986 & 0.89497 & 0.66326 & 2.4 \\
+logreg & 8 & 0.73364 & 0.00967 & 0.8976 & 0.64169 & 3.4 \\
+logreg & 9 & 0.73369 & 0.00955 & 0.89758 & 0.64246 & 3.7 \\
+logreg & 10 & 0.73319 & 0.00936 & 0.89736 & 0.64302 & 5.3 \\
+logreg & 11 & 0.73314 & 0.00995 & 0.89748 & 0.63853 & 3.4 \\
+logreg & 12 & 0.73363 & 0.0095 & 0.89754 & 0.64206 & 3.5 \\
+logreg & 13 & 0.7336 & 0.00957 & 0.89757 & 0.64279 & 3.3 \\
+logreg & 14 & 0.73087 & 0.01021 & 0.89681 & 0.63071 & 2.7 \\
+logreg & 15 & 0.7309 & 0.00904 & 0.8973 & 0.66878 & 4.2 \\
+logreg & 16 & 0.73343 & 0.00936 & 0.89744 & 0.64281 & 4.1 \\
+logreg & 17 & 0.73125 & 0.00903 & 0.89747 & 0.66859 & 4.0 \\
+logreg & 18 & 0.73137 & 0.01015 & 0.89697 & 0.6312 & 2.6 \\
+logreg & 19 & 0.73336 & 0.00939 & 0.89745 & 0.6424 & 4.0 \\
+logreg & 20 & 0.73356 & 0.00974 & 0.89758 & 0.64123 & 3.3 \\
+logreg & 21 & 0.73359 & 0.00947 & 0.89753 & 0.64222 & 3.7 \\
+logreg & 22 & 0.73003 & 0.00969 & 0.89723 & 0.66868 & 3.0 \\
+logreg & 23 & 0.7335 & 0.00942 & 0.89747 & 0.64248 & 3.7 \\
+logreg & 24 & 0.73369 & 0.0097 & 0.8976 & 0.64153 & 3.4 \\
+logreg & 25 & 0.73364 & 0.00969 & 0.89759 & 0.64126 & 3.4 \\
+logreg & 26 & 0.73332 & 0.0093 & 0.89742 & 0.64297 & 4.1 \\
+logreg & 27 & 0.72517 & 0.01028 & 0.89482 & 0.61952 & 2.1 \\
+logreg & 28 & 0.73347 & 0.00985 & 0.89756 & 0.64001 & 3.2 \\
+logreg & 29 & 0.73275 & 0.01003 & 0.89738 & 0.63658 & 2.9 \\
+logreg & 30 & 0.73128 & 0.00914 & 0.8975 & 0.66855 & 3.5 \\
+logreg & 31 & 0.73363 & 0.00973 & 0.89757 & 0.64086 & 3.6 \\
+logreg & 32 & 0.73356 & 0.0098 & 0.89759 & 0.64023 & 3.0 \\
+logreg & 33 & 0.73365 & 0.00958 & 0.89757 & 0.64235 & 4.0 \\
+logreg & 34 & 0.73361 & 0.00953 & 0.89754 & 0.64269 & 3.6 \\
+logreg & 35 & 0.73353 & 0.00946 & 0.8975 & 0.64282 & 3.6 \\
+logreg & 36 & 0.73106 & 0.00902 & 0.89739 & 0.66844 & 4.0 \\
+logreg & 37 & 0.73319 & 0.0099 & 0.89749 & 0.63852 & 3.2 \\
+logreg & 38 & 0.73084 & 0.00914 & 0.89733 & 0.66818 & 4.3 \\
+logreg & 39 & 0.7307 & 0.00949 & 0.89741 & 0.6689 & 2.9 \\
+random\_forest & 0 & 0.78257 & 0.00893 & 0.90992 & 0.65541 & 5.9 \\
+random\_forest & 1 & 0.798 & 0.00905 & 0.91337 & 0.66677 & 5.1 \\
+random\_forest & 2 & 0.77915 & 0.00781 & 0.90701 & 0.66669 & 8.7 \\
+random\_forest & 3 & 0.75915 & 0.0098 & 0.90094 & 0.65201 & 8.0 \\
+random\_forest & 4 & 0.78751 & 0.00921 & 0.91186 & 0.68298 & 4.0 \\
+random\_forest & 5 & 0.78858 & 0.01041 & 0.91169 & 0.68711 & 15.5 \\
+random\_forest & 6 & 0.78767 & 0.00952 & 0.91104 & 0.67943 & 8.2 \\
+random\_forest & 7 & 0.77153 & 0.01001 & 0.90584 & 0.66331 & 9.1 \\
+random\_forest & 8 & 0.80208 & 0.00874 & 0.91523 & 0.69278 & 20.1 \\
+random\_forest & 9 & 0.77585 & 0.00813 & 0.90741 & 0.64372 & 3.8 \\
+random\_forest & 10 & 0.8018 & 0.00884 & 0.91518 & 0.69257 & 25.4 \\
+random\_forest & 11 & 0.80224 & 0.00883 & 0.91541 & 0.69153 & 22.5 \\
+random\_forest & 12 & 0.79922 & 0.00907 & 0.91426 & 0.68781 & 19.1 \\
+random\_forest & 13 & 0.79902 & 0.00807 & 0.91367 & 0.69691 & 18.2 \\
+random\_forest & 14 & 0.79291 & 0.00845 & 0.91313 & 0.6622 & 10.8 \\
+random\_forest & 15 & 0.79983 & 0.00956 & 0.91455 & 0.69259 & 20.6 \\
+random\_forest & 16 & 0.8033 & 0.00828 & 0.91597 & 0.69199 & 19.0 \\
+random\_forest & 17 & 0.805 & 0.00822 & 0.91636 & 0.69823 & 19.8 \\
+random\_forest & 18 & 0.8048 & 0.00801 & 0.91661 & 0.69664 & 27.3 \\
+random\_forest & 19 & 0.80206 & 0.00815 & 0.91548 & 0.68928 & 6.3 \\
+random\_forest & 20 & 0.80446 & 0.00825 & 0.91659 & 0.69609 & 16.5 \\
+random\_forest & 21 & 0.80358 & 0.00775 & 0.91533 & 0.69844 & 15.2 \\
+random\_forest & 22 & 0.80478 & 0.00807 & 0.91613 & 0.69626 & 22.4 \\
+random\_forest & 23 & 0.80361 & 0.00821 & 0.91595 & 0.69877 & 22.9 \\
+random\_forest & 24 & 0.80032 & 0.00929 & 0.91451 & 0.69052 & 11.7 \\
+random\_forest & 25 & 0.80274 & 0.00822 & 0.91533 & 0.70093 & 22.3 \\
+random\_forest & 26 & 0.80237 & 0.00832 & 0.91437 & 0.678 & 24.1 \\
+random\_forest & 27 & 0.79104 & 0.00887 & 0.91328 & 0.68746 & 10.6 \\
+random\_forest & 28 & 0.79996 & 0.00919 & 0.91496 & 0.68992 & 13.4 \\
+random\_forest & 29 & 0.79939 & 0.00874 & 0.91512 & 0.69472 & 11.2 \\
+random\_forest & 30 & 0.79883 & 0.00972 & 0.91405 & 0.68827 & 14.1 \\
+random\_forest & 31 & 0.8001 & 0.00819 & 0.91496 & 0.68598 & 10.9 \\
+random\_forest & 32 & 0.80115 & 0.00825 & 0.91539 & 0.69143 & 8.2 \\
+random\_forest & 33 & 0.79322 & 0.00768 & 0.91038 & 0.69572 & 20.3 \\
+random\_forest & 34 & 0.80489 & 0.00809 & 0.91678 & 0.69564 & 15.5 \\
+random\_forest & 35 & 0.80217 & 0.00821 & 0.91605 & 0.69194 & 16.5 \\
+random\_forest & 36 & 0.8041 & 0.00805 & 0.91595 & 0.70195 & 25.1 \\
+random\_forest & 37 & 0.7748 & 0.00739 & 0.90461 & 0.66299 & 12.9 \\
+random\_forest & 38 & 0.78175 & 0.00956 & 0.91019 & 0.67608 & 9.7 \\
+random\_forest & 39 & 0.79041 & 0.00839 & 0.91139 & 0.679 & 21.1 \\
+xgboost & 0 & 0.81983 & 0.00758 & 0.92444 & 0.70793 & 7.6 \\
+xgboost & 1 & 0.82119 & 0.00846 & 0.92438 & 0.70263 & 9.5 \\
+xgboost & 2 & 0.80666 & 0.00722 & 0.91802 & 0.66991 & 7.1 \\
+xgboost & 3 & 0.80087 & 0.00751 & 0.91622 & 0.68863 & 2.8 \\
+xgboost & 4 & 0.80613 & 0.00745 & 0.91798 & 0.68064 & 7.0 \\
+xgboost & 5 & 0.81165 & 0.00745 & 0.9208 & 0.68857 & 5.4 \\
+xgboost & 6 & 0.73892 & 0.01037 & 0.89389 & 0.65488 & 3.4 \\
+xgboost & 7 & 0.81914 & 0.00767 & 0.92365 & 0.68757 & 7.2 \\
+xgboost & 8 & 0.81352 & 0.00776 & 0.92035 & 0.70924 & 9.9 \\
+xgboost & 9 & 0.79097 & 0.0079 & 0.91084 & 0.64833 & 3.7 \\
+xgboost & 10 & 0.80436 & 0.00816 & 0.91716 & 0.67867 & 10.5 \\
+xgboost & 11 & 0.82128 & 0.00785 & 0.92515 & 0.70957 & 11.7 \\
+xgboost & 12 & 0.81648 & 0.00739 & 0.92193 & 0.69898 & 10.9 \\
+xgboost & 13 & 0.82208 & 0.00802 & 0.92505 & 0.71023 & 8.2 \\
+xgboost & 14 & 0.82257 & 0.00759 & 0.92577 & 0.70871 & 8.2 \\
+xgboost & 15 & 0.81844 & 0.00757 & 0.92323 & 0.70892 & 10.5 \\
+xgboost & 16 & 0.8165 & 0.00797 & 0.92296 & 0.70292 & 12.0 \\
+xgboost & 17 & 0.82207 & 0.00702 & 0.92532 & 0.71017 & 9.1 \\
+xgboost & 18 & 0.819 & 0.00816 & 0.92341 & 0.7095 & 10.2 \\
+xgboost & 19 & 0.8236 & 0.00759 & 0.92605 & 0.71034 & 9.4 \\
+xgboost & 20 & 0.81678 & 0.00779 & 0.92301 & 0.70273 & 10.3 \\
+xgboost & 21 & 0.82396 & 0.00792 & 0.92633 & 0.7107 & 11.3 \\
+xgboost & 22 & 0.81935 & 0.00758 & 0.92437 & 0.70675 & 9.3 \\
+xgboost & 23 & 0.8189 & 0.00834 & 0.92334 & 0.70882 & 11.1 \\
+xgboost & 24 & 0.82282 & 0.00756 & 0.92586 & 0.71098 & 10.1 \\
+xgboost & 25 & 0.82106 & 0.00764 & 0.92506 & 0.70904 & 9.8 \\
+xgboost & 26 & 0.82335 & 0.00794 & 0.92594 & 0.71212 & 26.4 \\
+xgboost & 27 & 0.82348 & 0.00814 & 0.92615 & 0.71046 & 38.4 \\
+xgboost & 28 & 0.82268 & 0.00803 & 0.92585 & 0.7098 & 33.3 \\
+xgboost & 29 & 0.82518 & 0.00757 & 0.92681 & 0.71269 & 30.2 \\
+xgboost & 30 & 0.82351 & 0.00781 & 0.92615 & 0.71037 & 35.5 \\
+xgboost & 31 & 0.8229 & 0.00769 & 0.9259 & 0.71047 & 61.7 \\
+xgboost & 32 & 0.81931 & 0.00763 & 0.92422 & 0.70571 & 39.4 \\
+xgboost & 33 & 0.82483 & 0.00729 & 0.92659 & 0.71237 & 34.7 \\
+xgboost & 34 & 0.82304 & 0.0074 & 0.92602 & 0.70957 & 27.8 \\
+xgboost & 35 & 0.82588 & 0.00735 & 0.92698 & 0.71329 & 34.6 \\
+xgboost & 36 & 0.82087 & 0.008 & 0.92493 & 0.70656 & 37.7 \\
+xgboost & 37 & 0.82533 & 0.00732 & 0.92661 & 0.71326 & 38.5 \\
+xgboost & 38 & 0.82374 & 0.00738 & 0.92614 & 0.712 & 33.3 \\
+xgboost & 39 & 0.82429 & 0.00761 & 0.92644 & 0.71197 & 36.5 \\}
+\newcommand{\SelFB}{0.110}
+\newcommand{\TprFB}{0.703}
+\newcommand{\FprFB}{0.037}
+\newcommand{\PrecFB}{0.699}
+\newcommand{\AccFB}{0.934}
+\newcommand{\SelMB}{0.341}
+\newcommand{\TprMB}{0.793}
+\newcommand{\FprMB}{0.143}
+\newcommand{\PrecMB}{0.708}
+\newcommand{\AccMB}{0.838}
+\newcommand{\SelFA}{0.275}
+\newcommand{\TprFA}{0.842}
+\newcommand{\FprFA}{0.205}
+\newcommand{\PrecFA}{0.335}
+\newcommand{\AccFA}{0.800}
+\newcommand{\SelMA}{0.399}
+\newcommand{\TprMA}{0.851}
+\newcommand{\FprMA}{0.202}
+\newcommand{\PrecMA}{0.648}
+\newcommand{\AccMA}{0.814}
+\newcommand{\TestPrLog}{0.740}
+\newcommand{\TestRocLog}{0.902}
+\newcommand{\TestFoneLog}{0.681}
+\newcommand{\CvPrLog}{0.734}
+\newcommand{\ValPrLog}{0.727}
+\newcommand{\ThrLog}{0.296}
+\newcommand{\TestPrRf}{0.826}
+\newcommand{\TestRocRf}{0.926}
+\newcommand{\TestFoneRf}{0.729}
+\newcommand{\CvPrRf}{0.805}
+\newcommand{\ValPrRf}{0.800}
+\newcommand{\ThrRf}{0.673}
+\newcommand{\TestPrXgb}{0.845}
+\newcommand{\TestRocXgb}{0.936}
+\newcommand{\TestFoneXgb}{0.741}
+\newcommand{\CvPrXgb}{0.826}
+\newcommand{\ValPrXgb}{0.816}
+\newcommand{\ThrXgb}{0.653}
+\newcommand{\BasePr}{0.239}
+\newcommand{\BaseBrier}{0.182}
+\newcommand{\BaseAcc}{0.761}
+\newcommand{\FinAcc}{0.870}
+\newcommand{\CvStdXgb}{0.014}
+\newcommand{\EceLog}{0.009}
+\newcommand{\BrierLog}{0.105}
+\newcommand{\RealGap}{0.195}
+\newcommand{\NCols}{76}

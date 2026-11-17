@@ -1,0 +1,229 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{graphicx,booktabs,longtable,array,float,caption,hyperref,xcolor,enumitem,amsmath}
+\usepackage{lmodern}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue!50!black}
+\setlist{nosep,leftmargin=1.2em}
+\captionsetup{font=small}
+\graphicspath{{../figures/}}
+\input{generated.tex}
+\newcommand{\GroupNb}{3}% à confirmer : le planning oral liste ce groupe en n°10
+
+\title{\textbf{Prédire un revenu supérieur à 50\,k\$ : pipeline, réglage, explicabilité, calibration et équité}\\[2pt]
+\large Applied ML: Foundations, Engineering \& Evaluation (MSA-DATI07-05)}
+\author{Groupe \GroupNb{} : Max GUIRIEC, Amaniel ASRAT, Zackary AICH}
+\date{Novembre 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1.2em}
+\begin{center}
+\fbox{\parbox{0.92\linewidth}{\centering
+\textbf{Dataset utilisé : Option 1 --- Adult / Census Income} (recensement américain de 1994, \NRows{} lignes, 14 variables).\\
+\textbf{Dépôt GitHub (code, README, requirements, configuration, journal des essais) :}\\
+\url{https://github.com/Maqs-1/applied-ml-adult-income}}}
+\end{center}
+
+\section{Cadrage du problème et analyse exploratoire}
+\paragraph{Tâche.} Prédire si une personne gagne plus de 50\,k\$ par an (classe positive) à partir de caractéristiques démographiques et professionnelles. Le jeu est chargé via \texttt{fetch\_openml}, avec un repli automatique sur la source UCI d'origine (mêmes \NRows{} lignes) : OpenML renvoyait une erreur 503 au moment du travail.
+
+\paragraph{Ce que montre l'EDA} (Fig.~\ref{fig:eda}). La classe positive représente \PosRate\,\% des lignes : le problème est déséquilibré, et un modèle qui prédit toujours ``$\leq$50K'' obtient déjà \BaseAcc{} d'accuracy (Sec.~\ref{sec:imb}). Les valeurs manquantes sont codées ``?'' et concentrées sur trois colonnes : \texttt{workclass} (\MissWork), \texttt{occupation} (\MissOcc) et \texttt{native-country} (\MissCountry) ; les effectifs manquants de \texttt{workclass} et \texttt{occupation} sont quasi identiques, ce qui suggère qu'elles manquent ensemble ; le manque peut donc être informatif. \CapZero\,\% des personnes ont un gain en capital nul, avec une queue très lourde. Enfin le taux de revenus élevés diffère fortement selon le sexe : \PosF\,\% chez les femmes (\ShareF\,\% de l'échantillon) contre \PosM\,\% chez les hommes, ce qui motivera l'audit d'équité (Sec.~\ref{sec:fair}).
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.85\linewidth]{eda_overview.png}
+\caption{Vue d'ensemble : déséquilibre de la cible, distributions d'âge et d'heures, taux de positifs selon le niveau d'études, le sexe et le statut marital.}\label{fig:eda}
+\end{figure}
+
+\paragraph{Découpage honnête.} Les \NDup{} doublons exacts sont supprimés \emph{avant} le découpage (sinon une même ligne pourrait être en entraînement et en test). Le découpage 60/20/20, \emph{stratifié sur (cible $\times$ sexe)} avec la graine 42, donne \NTrain{} lignes d'entraînement, \NVal{} de validation et \NTest{} de test, avec la même prévalence dans chacun. Les rôles sont stricts : \textbf{entraînement} = apprentissage et validation croisée d'Optuna ; \textbf{validation} = choix du seuil de décision, du modèle final, de la recalibration et de la mitigation ; \textbf{test} = lu uniquement pour rapporter les résultats finaux, jamais pour décider.
+
+\section{Feature engineering et Pipeline unique}\label{sec:fe}
+Tout le prétraitement et le modèle sont dans un seul \texttt{sklearn.pipeline.Pipeline} (\texttt{FeatureEngineer} $\rightarrow$ \texttt{ColumnTransformer} $\rightarrow$ modèle). Il est donc ré-appris dans chaque pli de validation croisée, sans fuite possible.
+
+\paragraph{Valeurs manquantes et encodage.} Variables numériques : imputation par la médiane (et standardisation pour le modèle linéaire seulement). Variables catégorielles : les manquants deviennent une modalité explicite ``Missing'' (le manque est informatif), puis one-hot, avec regroupement des modalités vues moins de 20 fois et gestion des modalités inconnues. On obtient \NCols{} colonnes.
+
+\paragraph{Variables construites (justifiées).}
+\begin{itemize}
+\item \texttt{log\_capital\_net} : logarithme signé de (gain $-$ perte en capital), pour écraser une distribution à queue très lourde.
+\item \texttt{has\_capital} : présence d'un revenu du capital, proxy de patrimoine.
+\item \texttt{is\_married} : marié(e) vivant avec son conjoint (7 modalités regroupées en un signal fort : foyer avec deux revenus potentiels).
+\item \texttt{overtime} : plus de 40 heures par semaine.
+\item \texttt{age\_x\_edu} : interaction âge $\times$ années d'études (expérience valorisée par le diplôme), surtout utile au modèle linéaire.
+\end{itemize}
+\paragraph{Colonnes retirées.} \texttt{fnlwgt} (poids d'échantillonnage du recensement, pas une caractéristique de la personne) et \texttt{education} (redondante avec \texttt{education-num}). Les attributs sensibles \texttt{sex} et \texttt{race} sont \emph{exclus des entrées du modèle} mais conservés à part pour l'audit ; nous verrons en Sec.~\ref{sec:shap} et~\ref{sec:fair} que cela ne suffit pas à supprimer le biais.
+
+\section{Déséquilibre des classes}\label{sec:imb}
+\paragraph{Métriques.} L'accuracy est trompeuse ici : le baseline (prédire toujours la classe majoritaire) atteint \BaseAcc{} avec un rappel nul. Nous retenons la \textbf{PR-AUC} (précision moyenne) comme métrique d'optimisation, car elle se concentre sur la classe rare et ne dépend pas d'un seuil ; son niveau de référence est la prévalence (\BasePr). Nous rapportons aussi ROC-AUC, F1, précision, rappel, accuracy équilibrée et Brier.
+
+\paragraph{Remède et justification.} Nous combinons deux leviers, appliqués dans \texttt{src/train.py} : (i) une \emph{repondération des classes}, traitée comme un hyperparamètre qu'Optuna tranche (\texttt{class\_weight} $\in$ \{aucun, balanced\} pour la régression logistique et le Random Forest ; \texttt{scale\_pos\_weight} égal au rapport négatifs/positifs ou 1 pour XGBoost) ; (ii) un \emph{seuil de décision} choisi sur la validation pour maximiser le F1, au lieu du seuil 0.5. Nous n'avons pas utilisé SMOTE : il fabrique des exemples synthétiques dans un espace mélangeant variables binaires et continues, n'est utile qu'en cas de déséquilibre extrême, et le déséquilibre ici (1 positif pour 3 négatifs) est modéré. Le rééchantillonnage devrait de toute façon vivre dans le pipeline pour ne pas fuiter.
+
+\paragraph{Ce que le réglage a décidé.} La régression logistique choisit \emph{aucune} repondération, le Random Forest \texttt{balanced}, XGBoost \texttt{scale\_pos\_weight} actif (Tab.~\ref{tab:params}, annexe). Le seuil choisi sur la validation vaut \ThrLog{} (logistique, sans repondération : un seuil bas compense), \ThrRf{} (Random Forest) et \ThrXgb{} (XGBoost). Pour XGBoost, passer du seuil 0.5 au seuil de validation fait passer le F1 de test de \FinFHalf{} à \FinFone{} (le rappel baisse de \FinRecallHalf{} à \FinRecall, la précision monte). Un effet secondaire important de la repondération apparaît en Sec.~\ref{sec:cal}.
+
+\section{Modèles, réglage Optuna et journal des essais}
+\paragraph{Les trois modèles.} Nous suivons une progression : \emph{baseline} (prévalence) $\rightarrow$ \textbf{régression logistique} (linéaire, interprétable) $\rightarrow$ \textbf{Random Forest} (non-linéarités et interactions, peu sensible au choix des hyperparamètres) $\rightarrow$ \textbf{XGBoost} (boosting, plus expressif mais plus sensible à ses hyperparamètres).
+
+\paragraph{Réglage avec validation croisée.} Pour chaque modèle, Optuna (échantillonneur TPE, graine 42) exécute \textbf{40 essais} qui maximisent la PR-AUC moyenne d'une validation croisée stratifiée à 5 plis \emph{sur l'entraînement uniquement}. Le score rapporté en CV est donc une moyenne sur des plis non vus par l'ajustement de chaque essai. Comme le meilleur essai est sélectionné parmi 40, ce score reste légèrement optimiste : c'est pourquoi la comparaison finale utilise la validation puis le test, jamais les scores de CV seuls. Le meilleur jeu de paramètres est ensuite ré-entraîné sur tout l'entraînement.
+
+\paragraph{Journal des essais (exigence 7).} Chaque essai écrit une ligne dans \texttt{runs/trials\_log.csv} : modèle, numéro, paramètres, moyennes et écart-type des métriques en CV, durée, et fichier d'artefact (courbe d'historique Optuna \texttt{figures/optuna\_<modèle>\_history.png} ; modèle sauvegardé \texttt{models/<modèle>.joblib} pour la ligne du meilleur essai). Les \NTrialsTotal{} essais sont reproduits en annexe.
+
+\begin{table}[H]\centering\small
+\begin{tabular}{lrrrrrr}\toprule
+Modèle & Essais & PR-AUC CV & ROC-AUC CV & PR-AUC val. & F1 val. & Seuil \\ \midrule
+\TabCV \\ \bottomrule
+\end{tabular}
+\caption{Meilleur essai de chaque modèle : validation croisée sur l'entraînement, puis validation (seuil choisi sur la validation).}\label{tab:cv}
+\end{table}
+
+\section{Comparaison des modèles sur le test}
+Le modèle final est choisi \emph{avant} de regarder le test, par la PR-AUC de validation : c'est \FinalModel. Les trois modèles sont ensuite évalués une seule fois sur le test, avec le même protocole et le seuil fixé en validation (Tab.~\ref{tab:test}, Fig.~\ref{fig:pr}).
+
+\begin{table}[H]\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccccc}\toprule
+Modèle & PR-AUC & ROC-AUC & F1 & Préc. & Rappel & Acc. éq. & Brier & F1@0.5 \\ \midrule
+\TabTest \\ \bottomrule
+\end{tabular}
+\caption{Résultats sur le test (\NTest{} lignes), seuil choisi en validation. Le baseline est évalué sur la validation. Le modèle final est en gras.}\label{tab:test}
+\end{table}
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.58\linewidth]{test_pr_curves.png}
+\caption{Courbes précision-rappel sur le test ; la ligne pointillée est la prévalence.}\label{fig:pr}
+\end{figure}
+
+\paragraph{Ce que chaque étape apporte.}
+\begin{itemize}
+\item \emph{Baseline $\rightarrow$ régression logistique} : la PR-AUC passe de \BasePr{} à \TestPrLog{} : les variables (études, âge, statut marital, heures) portent déjà l'essentiel du signal, et le modèle reste entièrement lisible.
+\item \emph{Logistique $\rightarrow$ Random Forest} : le gain est le plus fort (PR-AUC \TestPrRf{}, F1 \TestFoneRf{}). Il provient vraisemblablement des interactions et non-linéarités (effet de l'âge, du capital, du statut marital) que la logistique ne capte pas, malgré \texttt{age\_x\_edu} ; nous n'avons pas isolé cette cause par une ablation.
+\item \emph{Random Forest $\rightarrow$ XGBoost} : gain plus modeste (PR-AUC \TestPrXgb, ROC-AUC \TestRocXgb), cohérent en CV (\CvPrRf{} $\rightarrow$ \CvPrXgb{}) et en validation (\ValPrRf{} $\rightarrow$ \ValPrXgb). Nous n'avons pas calculé d'intervalles de confiance (limite, Sec.~\ref{sec:lim}) : l'écart RF/XGBoost est petit, et la cohérence sur trois jeux de données est notre seul argument pour le retenir.
+\end{itemize}
+Le score de test de \FinalModel{} (\TestPrXgb) est supérieur à son score de CV (\CvPrXgb) : cette différence est de l'ordre de la variabilité d'un échantillon de test de cette taille, et ne signale pas de fuite (le test n'a servi à aucun choix) ; nous ne l'interprétons pas davantage.
+
+\section{Explicabilité (SHAP)}\label{sec:shap}
+Nous utilisons \texttt{TreeExplainer} sur le pipeline final, appliqué aux variables transformées, sur 1\,000 lignes de test tirées au hasard (graine fixée).
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.78\linewidth]{shap_summary.png}
+\caption{Importance globale (SHAP beeswarm) : chaque point est une personne, sa couleur la valeur de la variable.}\label{fig:shap}
+\end{figure}
+
+\begin{table}[H]\centering\small
+\begin{tabular}{rlr}\toprule
+Rang & Variable & Moyenne des $|$SHAP$|$ \\ \midrule
+\TabShap \\ \bottomrule
+\end{tabular}
+\caption{Les dix variables les plus influentes.}\label{tab:shap}
+\end{table}
+
+\paragraph{Cohérence métier.} Les variables dominantes sont plausibles : le statut marital (\texttt{is\_married} et \texttt{marital-status\_Married-civ-spouse}, deux encodages quasi identiques dont l'importance se cumule), les gains en capital, le niveau d'études, l'âge/l'expérience et les heures travaillées sont des déterminants classiques du revenu. En revanche, le poids du statut marital est un \emph{signal d'alerte} : dans les données de 1994, un conjoint marié est très souvent un homme chef de foyer (\texttt{relationship\_Husband} figure parmi les dix premières variables). Le modèle peut donc retrouver une partie de l'information sur le sexe à travers des variables corrélées, même sans y avoir accès ; nous n'avons pas mesuré cet effet directement, c'est une hypothèse que l'écart d'équité de la Sec.~\ref{sec:fair} rend crédible.
+
+\paragraph{Explications locales.} Fig.~\ref{fig:local} et Tab.~\ref{tab:local} présentent quatre cas du test : un vrai positif, un vrai négatif, un faux positif et un faux négatif. Sur le faux positif, l'occupation (\texttt{Other-service}) tire la probabilité vers le bas, mais l'effet cumulé du mariage, des études et de l'âge la maintient au-dessus du seuil ; sur le faux négatif, un faible niveau d'études et l'interaction âge $\times$ études dominent alors que la personne gagne plus de 50\,k\$ : le modèle n'a probablement pas accès aux facteurs absents des données (ancienneté, employeur). Les erreurs sont donc cohérentes avec une lecture ``statistique'' du profil.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.48\linewidth]{shap_local_vrai_positif.png}\hfill
+\includegraphics[width=0.48\linewidth]{shap_local_vrai_negatif.png}\\[2pt]
+\includegraphics[width=0.48\linewidth]{shap_local_faux_positif.png}\hfill
+\includegraphics[width=0.48\linewidth]{shap_local_faux_negatif.png}
+\caption{Explications locales (waterfall SHAP) : vrai positif, vrai négatif (haut), faux positif, faux négatif (bas).}\label{fig:local}
+\end{figure}
+
+\begin{table}[H]\centering\small
+\begin{tabular}{lccp{7.4cm}}\toprule
+Cas & Vrai & $p(>50\mathrm{K})$ & Principales contributions (SHAP, log-odds) \\ \midrule
+\TabShapLocal \\ \bottomrule
+\end{tabular}
+\caption{Résumé des quatre cas locaux.}\label{tab:local}
+\end{table}
+
+\section{Calibration}\label{sec:cal}
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.93\linewidth]{calibration_reliability.png}
+\caption{Courbe de fiabilité de \FinalModel{} sur le test (bacs par quantiles), avant et après recalibration isotonique apprise sur la validation ; distribution des probabilités prédites.}\label{fig:cal}
+\end{figure}
+\paragraph{Diagnostic.} Le Brier score brut vaut \CalBrier{} et l'ECE \CalEce. La probabilité moyenne prédite est \CalMeanPred{} alors que le taux réel de positifs est \CalObs{} : le modèle \textbf{sur-estime systématiquement la probabilité de la classe positive} (écart moyen \CalGap{}), il est donc ``sur-confiant'' vers les revenus élevés (Fig.~\ref{fig:cal}). La cause est directe : la repondération des classes choisie par Optuna (\texttt{scale\_pos\_weight}) améliore le classement (PR-AUC) mais déplace les probabilités vers le haut. À titre de comparaison, la régression logistique non repondérée est bien mieux calibrée (ECE de \EceLog{} contre \CalEce{} ; leurs Brier sont proches, \BrierLog{} contre \FinBrier), mais son classement est nettement moins bon (Tab.~\ref{tab:test}).
+\paragraph{Correctif et décision.} Une recalibration isotonique apprise sur la validation (modèle de base gelé) ramène l'ECE à \CalIsoEce{} et le Brier à \CalIsoBrier{} sur le test. \textbf{Nous ne ferions pas confiance aux probabilités brutes pour une décision aval} (par exemple un seuil de coût, un tarif ou un classement par probabilité absolue) ; en revanche, pour un simple \emph{classement} ou une décision avec le seuil appris, le modèle brut convient, car le seuil a été choisi sur ses sorties brutes. Pour exploiter les probabilités, il faut utiliser la version recalibrée (\texttt{models/<modèle>\_isotonic.joblib}).
+
+\section{Audit d'équité et mitigation}\label{sec:fair}
+\paragraph{Attribut sensible et définitions.} L'attribut est le \textbf{sexe} (race en analyse secondaire). Deux définitions sont comparées : la \emph{parité démographique} (le taux de prédictions positives $P(\hat Y=1\mid A)$ est le même entre groupes) et l'\emph{equalized odds} (mêmes TPR et FPR entre groupes, i.e.\ à revenu réel donné, la même chance d'être bien ou mal classé). Les taux de base réels diffèrent (\PosF\,\% contre \PosM\,\%) : exiger la parité démographique reviendrait à ignorer un signal réel et à créer des erreurs différentes selon les groupes, c'est pourquoi la \textbf{mitigation vise l'equalized odds}.
+
+\paragraph{Audit avant mitigation} (test, Tab.~\ref{tab:fair}). Le taux de sélection est de \SelFB{} pour les femmes et \SelMB{} pour les hommes (écart de parité démographique \DpdB, ratio \DprB). Le TPR est de \TprFB{} contre \TprMB{}, et le FPR de \FprFB{} contre \FprMB{} : l'écart d'equalized odds vaut \EodB. Le modèle est donc plus généreux avec les hommes, à la fois en vrais et en faux positifs. Une partie de l'écart de sélection reflète la différence réelle des taux de base, et le modèle la dépasse légèrement (écart de sélection \DpdB{} contre un écart réel de \RealGap{} entre les taux de base). Analyse secondaire sur la race : écart de parité démographique \RaceDpd{} et d'equalized odds \RaceEod{} (Tab.~\ref{tab:race}), à lire avec prudence car certains groupes sont petits.
+
+\paragraph{Mitigation.} Nous appliquons \texttt{ThresholdOptimizer} de Fairlearn (post-traitement, contrainte \texttt{equalized\_odds}) sur le modèle gelé : il apprend, \emph{sur la validation}, un seuil (éventuellement randomisé) par groupe. Il est évalué une seule fois sur le test. Avantages : le modèle n'est pas ré-entraîné et la contrainte est ciblée ; inconvénients : il \emph{utilise le sexe à l'inférence} (ce qui peut poser problème légalement) et ses prédictions sont randomisées (graine fixée).
+
+\begin{table}[H]\centering\small
+\begin{tabular}{llccccc}\toprule
+Phase & Groupe & Sélection & TPR & FPR & Précision & Accuracy \\ \midrule
+\TabFair \bottomrule
+\end{tabular}
+\caption{Métriques par sexe sur le test, avant et après ThresholdOptimizer.}\label{tab:fair}
+\end{table}
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.93\linewidth]{fairness_before_after.png}
+\caption{Taux de sélection, TPR et FPR par sexe, avant et après mitigation (test).}\label{fig:fair}
+\end{figure}
+
+\begin{table}[H]\centering\small
+\begin{tabular}{lrccc}\toprule
+Groupe (race) & Effectif & Sélection & TPR & FPR \\ \midrule
+\TabRace \\ \bottomrule
+\end{tabular}
+\caption{Audit secondaire par race, avant mitigation (test).}\label{tab:race}
+\end{table}
+
+\paragraph{Résultat avant/après.} L'écart d'equalized odds tombe de \EodB{} à \EodA{} : l'objectif est atteint. La parité démographique ne l'est pas (\DpdB{} $\rightarrow$ \DpdA), ce qui est attendu puisque les taux de base diffèrent. Mais le coût est réel : le F1 global passe de \FoneB{} à \FoneA{} et l'accuracy de \AccB{} à \AccA. La raison est visible dans le Tab.~\ref{tab:fair} : la contrainte est satisfaite en \emph{rendant le modèle bien plus permissif avec les femmes} (sélection \SelFB{} $\rightarrow$ \SelFA, FPR \FprFB{} $\rightarrow$ \FprFA), si bien que leur précision s'effondre de \PrecFB{} à \PrecFA. Autrement dit, l'égalité des taux d'erreur est obtenue en multipliant les faux positifs chez les femmes. Que ce compromis soit acceptable dépend du coût des faux positifs dans l'usage visé ; sans ce contexte, nous ne recommandons ni l'un ni l'autre des deux modèles, nous documentons le compromis.
+
+\section{Reproductibilité, limites et honnêteté méthodologique}\label{sec:lim}
+\paragraph{Reproductibilité.} Graine 42 partout, versions épinglées dans \texttt{requirements.txt} (Python 3.12), paramètres dans \texttt{config.yaml}, une commande pour tout relancer (\texttt{python run\_all.py}). Tous les chiffres de ce rapport sont générés par \texttt{report/gen\_numbers.py} à partir des fichiers \texttt{runs/*.json} produits par le code ; aucun n'est saisi à la main. Un endpoint de prédiction FastAPI (\texttt{src/api.py}) sert le modèle final.
+\paragraph{Limites.}
+\begin{itemize}
+\item Un seul découpage et aucun intervalle de confiance (pas de bootstrap) : les petits écarts, notamment RF contre XGBoost, ne sont pas testés statistiquement.
+\item Les résultats du test ont servi à \emph{rapporter} SHAP, calibration et équité, mais aucune décision (hyperparamètres, seuil, modèle, recalibration, mitigation) n'a été prise sur le test.
+\item Données de 1994 : la cible et les inégalités qu'elle reflète sont historiques ; l'audit d'équité illustre une méthode, il ne valide pas un usage réel. Nous n'auditons qu'un attribut binaire et une analyse secondaire.
+\item Optuna optimise la PR-AUC seule ; la calibration n'est pas dans l'objectif, d'où la sur-confiance observée.
+\item Une première exécution complète a dû être refaite : un garde-fou de temps trop court avait interrompu le réglage de XGBoost ; seuls les résultats de la seconde exécution, complète (40 essais par modèle), figurent ici.
+\end{itemize}
+
+\section*{Utilisation d'une IA}
+Nous avons utilisé \textbf{Claude Code} (Anthropic) comme assistant de développement : écriture et débogage des scripts Python du dépôt, génération du squelette du rapport LaTeX et de la préparation de l'oral. Toutes les valeurs numériques du rapport proviennent de l'exécution du code (génération automatique) et non de l'IA. Les choix méthodologiques exposés ci-dessus sont décrits pour que chaque membre puisse les expliquer et les défendre.
+
+\section*{Déclaration de contribution}
+\begin{center}\small
+\begin{tabular}{p{3.9cm}p{5.4cm}p{5.6cm}}\toprule
+Membre & Responsabilité (défense orale) & Étapes du pipeline \\ \midrule
+Max GUIRIEC & Données, EDA, features, pipeline ; coordination Git et rapport & Exigences 1, 2, 5 ; assemblage du dépôt \\
+Amaniel ASRAT & Modélisation et réglage & Exigences 3, 4, 6, 7 (déséquilibre, modèles, Optuna, journal) \\
+Zackary AICH & Interprétation, calibration, équité & Exigences 8, 9, 10 (SHAP, calibration, audit) \\ \bottomrule
+\end{tabular}
+\end{center}
+Le code a été produit avec l'assistance de Claude Code (voir ci-dessus) ; chaque membre répond de l'ensemble du projet.
+
+\clearpage
+\appendix
+\section{Hyperparamètres retenus}
+\begin{table}[H]\centering
+\begin{tabular}{lp{11cm}}\toprule
+Modèle & Meilleurs paramètres (essai de meilleure PR-AUC en CV) \\ \midrule
+\TabParams \\ \bottomrule
+\end{tabular}
+\caption{Hyperparamètres des modèles finaux.}\label{tab:params}
+\end{table}
+
+\section{Historique des essais Optuna}
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.32\linewidth]{optuna_logreg_history.png}\hfill
+\includegraphics[width=0.32\linewidth]{optuna_random_forest_history.png}\hfill
+\includegraphics[width=0.32\linewidth]{optuna_xgboost_history.png}
+\caption{PR-AUC en CV par essai et meilleur score cumulé, pour chaque modèle.}
+\end{figure}
+
+\section{Journal complet des essais (\NTrialsTotal{} essais)}
+Colonnes : modèle, numéro d'essai, PR-AUC moyenne et écart-type sur les 5 plis, ROC-AUC, F1, durée (s). Les paramètres de chaque essai et l'artefact associé figurent dans \texttt{runs/trials\_log.csv}.
+{\small
+\begin{longtable}{lrrrrrr}\toprule
+Modèle & Essai & PR-AUC & Écart-type & ROC-AUC & F1 & Durée \\ \midrule\endhead
+\TabLog \\ \bottomrule
+\end{longtable}}
+\end{document}

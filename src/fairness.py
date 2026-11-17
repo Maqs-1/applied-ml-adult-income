@@ -106,6 +106,8 @@ def main() -> None:
     for ax, m in zip(axes, ["selection_rate", "tpr", "fpr"]):
         df[df["métrique"] == m].pivot(index="phase", columns="groupe", values="valeur").loc[["avant", "après"]].plot.bar(ax=ax, rot=0)
         ax.set_title(m)
+        ax.set_ylim(0, ax.get_ylim()[1] * 1.3)
+        ax.legend(loc="upper left", fontsize=7, ncol=2)
     fig.suptitle(f"Équité par {sens_col} — {final}, test (avant/après ThresholdOptimizer)")
     fig.tight_layout()
     fig.savefig(p("figures/fairness_before_after.png"), dpi=120)
