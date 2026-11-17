@@ -71,9 +71,9 @@ def make_model(name: str, trial: optuna.Trial | None, params: dict | None, seed:
     if name == "xgboost":
         use_w = s("categorical", "reweight", [False, True])
         m = XGBClassifier(
-            n_estimators=s("int", "n_estimators", 100, 800, step=50),
+            n_estimators=s("int", "n_estimators", 100, 500, step=50),
             learning_rate=s("float", "learning_rate", 0.01, 0.3, log=True),
-            max_depth=s("int", "max_depth", 2, 10),
+            max_depth=s("int", "max_depth", 2, 8),
             min_child_weight=s("float", "min_child_weight", 1, 20, log=True),
             subsample=s("float", "subsample", 0.5, 1.0),
             colsample_bytree=s("float", "colsample_bytree", 0.4, 1.0),

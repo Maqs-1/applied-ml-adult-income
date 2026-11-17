@@ -26,7 +26,7 @@ cv:
 optuna:
   n_trials: 40
   metric: average_precision   # PR-AUC
-  timeout_s: 1800
+  timeout_s: 14400   # garde-fou large : on veut bien n_trials essais par modèle
 
 models: [logreg, random_forest, xgboost]
 
