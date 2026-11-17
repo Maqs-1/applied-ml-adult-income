@@ -1,0 +1,16 @@
+is_married                           0.608208
+log_capital_net                      0.568082
+age_x_edu                            0.561089
+marital-status_Married-civ-spouse    0.433595
+age                                  0.339860
+education-num                        0.302683
+hours-per-week                       0.284391
+relationship_Husband                 0.156850
+relationship_Own-child               0.137756
+overtime                             0.126876
+occupation_Exec-managerial           0.106222
+has_capital                          0.086612
+occupation_Other-service             0.084771
+relationship_Wife                    0.077100
+occupation_Prof-specialty            0.072583
+dtype: float32

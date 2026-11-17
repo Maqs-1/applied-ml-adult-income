@@ -1,0 +1,59 @@
+{
+  "n_rows": 48842,
+  "n_cols": 14,
+  "n_exact_duplicates": 52,
+  "positive_rate": 0.2393,
+  "missing_by_col": {
+    "workclass": 2799,
+    "occupation": 2809,
+    "native-country": 857
+  },
+  "dtypes": {
+    "age": "int64",
+    "workclass": "object",
+    "fnlwgt": "int64",
+    "education": "object",
+    "education-num": "int64",
+    "marital-status": "object",
+    "occupation": "object",
+    "relationship": "object",
+    "race": "object",
+    "sex": "object",
+    "capital-gain": "int64",
+    "capital-loss": "int64",
+    "hours-per-week": "int64",
+    "native-country": "object",
+    "target": "int64"
+  },
+  "positive_rate_by_sex": {
+    "Female": 0.1093,
+    "Male": 0.3038
+  },
+  "share_by_sex": {
+    "Male": 0.6685,
+    "Female": 0.3315
+  },
+  "positive_rate_by_race": {
+    "Amer-Indian-Eskimo": 0.117,
+    "Asian-Pac-Islander": 0.2693,
+    "Black": 0.1208,
+    "Other": 0.1232,
+    "White": 0.254
+  },
+  "capital_gain_zero_share": 0.9174,
+  "capital_loss_zero_share": 0.9533,
+  "splits": {
+    "train": {
+      "n": 29274,
+      "positive_rate": 0.2394
+    },
+    "val": {
+      "n": 9758,
+      "positive_rate": 0.2394
+    },
+    "test": {
+      "n": 9758,
+      "positive_rate": 0.2394
+    }
+  }
+}
