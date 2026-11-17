@@ -1,4 +1,4 @@
-# Applied ML — Adult / Census Income (Groupe 3)
+# Applied ML — Adult / Census Income (Groupe 10)
 
 Projet final du cours *Applied ML: Foundations, Engineering & Evaluation* (MSA-DATI07-05).
 **Dataset : Option 1 — Adult / Census Income** (`fetch_openml(name="adult", version=2)`).
