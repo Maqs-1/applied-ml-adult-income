@@ -55,11 +55,21 @@ def make_model(name: str, trial: optuna.Trial | None, params: dict | None, seed:
         return getattr(trial, f"suggest_{kind}")(key, *a, **kw)
 
     if name == "logreg":
+        # Justification des plages (Régression Logistique) :
+        # C : 1e-3 à 1e2, log scale, pour couvrir un large éventail de régularisation
+        # class_weight : None ou balanced, pour gérer le déséquilibre des classes
+        # liée au One-Hot Encoding, jusqu'à un modèle peu régularisé.
         m = LogisticRegression(C=s("float", "C", 1e-3, 1e2, log=True),
                                class_weight=s("categorical", "class_weight", [None, "balanced"]),
                                max_iter=3000, solver="lbfgs")
         return m, True
     if name == "random_forest":
+        # Justification des plages (Forêt Aléatoire) :
+        # n_estimators : 100 à 400, step=50, pour couvrir un large éventail de complexité
+        # max_depth : 4 à 24, pour gérer la profondeur de l'arbre
+        # min_samples_leaf : 1 à 30, pour contrôler la taille des feuilles
+        # max_features : ["sqrt", "log2", 0.3, 0.5], pour gérer le nombre de caractéristiques testées à chaque division
+        # class_weight : [None, "balanced", "balanced_subsample"], pour gérer le déséquilibre des classes
         m = RandomForestClassifier(
             n_estimators=s("int", "n_estimators", 100, 400, step=50),
             max_depth=s("int", "max_depth", 4, 24),
@@ -69,6 +79,11 @@ def make_model(name: str, trial: optuna.Trial | None, params: dict | None, seed:
             n_jobs=-1, random_state=seed)
         return m, False
     if name == "xgboost":
+        # Justification des plages (XGBoost) :
+        # n_estimators : 100 à 500, step=50, pour couvrir un large éventail de complexité
+        # learning_rate : 0.01 à 0.3, log scale, pour gérer la vitesse d'apprentissage
+        # max_depth : 2 à 8, pour gérer la profondeur de l'arbre
+        # min_child_weight : 1 à 20, log scale, pour contrôler la taille minimale des nœuds
         use_w = s("categorical", "reweight", [False, True])
         m = XGBClassifier(
             n_estimators=s("int", "n_estimators", 100, 500, step=50),

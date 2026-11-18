@@ -13,3 +13,4 @@ seaborn==0.13.2
 shap==0.54.1
 uvicorn==0.54.0
 xgboost==3.4.1
+pytest==8.0.0
