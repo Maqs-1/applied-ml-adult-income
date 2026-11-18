@@ -1,7 +1,7 @@
-"""Génère report/generated.tex (macros + tableaux) à partir des fichiers runs/*.json.
+"""Builds report/generated.tex (LaTeX macros + tables) from the runs/*.json files.
 
-Aucun chiffre du rapport n'est saisi à la main : tout vient de l'exécution du code.
-Usage : python report/gen_numbers.py
+No number in the report is typed by hand: everything comes from running the code.
+Usage: python report/gen_numbers.py
 """
 from __future__ import annotations
 
@@ -13,8 +13,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 RUNS = ROOT / "runs"
-NAMES = {"logreg": "Régression logistique", "random_forest": "Random Forest", "xgboost": "XGBoost",
-         "baseline_dummy": "Baseline (prévalence)"}
+NAMES = {"logreg": "Logistic regression", "random_forest": "Random forest", "xgboost": "XGBoost",
+         "baseline_dummy": "Baseline (prior)"}
+CASES = {"vrai_positif": "true positive", "vrai_negatif": "true negative",
+         "faux_positif": "false positive", "faux_negatif": "false negative"}
 
 
 def j(name):
@@ -104,13 +106,13 @@ def main():
 
     # Équité
     rows = []
-    for tag, key in [("Avant", "before"), ("Après", "after_threshold_optimizer")]:
+    for tag, key in [("Before", "before"), ("After", "after_threshold_optimizer")]:
         a = fair[key]
         for g in ["Female", "Male"]:
             bg = a["by_group"][g]
             rows.append(f"{tag} & {g} & {f3(bg['selection_rate'])} & {f3(bg['tpr'])} & {f3(bg['fpr'])} & "
                         f"{f3(bg['precision'])} & {f3(bg['accuracy'])} \\\\")
-        rows.append(f"{tag} & \\textit{{global}} & {f3(a['overall']['selection_rate'])} & {f3(a['overall']['tpr'])} & "
+        rows.append(f"{tag} & \\textit{{overall}} & {f3(a['overall']['selection_rate'])} & {f3(a['overall']['tpr'])} & "
                     f"{f3(a['overall']['fpr'])} & {f3(a['overall']['precision'])} & {f3(a['overall']['accuracy'])} \\\\ \\midrule")
     out.append("\\newcommand{\\TabFair}{" + "\n".join(rows) + "}\n")
     for tag, key in [("B", "before"), ("A", "after_threshold_optimizer")]:
@@ -134,18 +136,25 @@ def main():
     rows = []
     for lab, c in shap_local["cases"].items():
         top = "; ".join(f"\\texttt{{{esc(k)}}} {v:+.2f}" for k, v in list(c["top_contributions"].items())[:4])
-        rows.append(f"{esc(lab.replace('_', ' '))} & {c['y_true']} & {f3(c['proba'])} & \\footnotesize {top} \\\\")
+        rows.append(f"{CASES.get(lab, lab)} & {c['y_true']} & {f3(c['proba'])} & \\footnotesize {top} \\\\")
     out.append("\\newcommand{\\TabShapLocal}{" + "\n".join(rows) + "}\n")
 
     # Journal des essais (annexe)
     log = list(csv.DictReader(open(RUNS / "trials_log.csv", encoding="utf-8")))
     out.append(macro("NTrialsTotal", sum(1 for r in log if r["state"] == "COMPLETE")))
-    rows = []
+    by = {}
     for r in log:
-        if r["state"] != "COMPLETE":
-            continue
-        rows.append(f"{esc(r['model'])} & {r['trial']} & {r['cv_pr_auc_mean']} & {r['cv_pr_auc_std']} & "
-                    f"{r['cv_roc_auc_mean']} & {r['cv_f1_mean']} & {r['duration_s']} \\\\")
+        if r["state"] == "COMPLETE":
+            by[(r["model"], int(r["trial"]))] = r
+    n = max(t for _, t in by) + 1
+    rows = []
+    for t in range(n):
+        cells = [str(t)]
+        for m in ["logreg", "random_forest", "xgboost"]:
+            r = by.get((m, t))
+            cells += ([f"{float(r['cv_pr_auc_mean']):.4f}", f"{float(r['cv_pr_auc_std']):.4f}",
+                       f"{float(r['cv_f1_mean']):.3f}", f"{float(r['duration_s']):.0f}"] if r else ["--"] * 4)
+        rows.append(" & ".join(cells) + " \\\\")
     out.append("\\newcommand{\\TabLog}{" + "\n".join(rows) + "}\n")
 
 
@@ -179,8 +188,12 @@ def main():
     _pipe = joblib.load(ROOT / "models" / f"{final}.joblib")["pipeline"]
     out.append(macro("NCols", len(_pipe[:-1][-1].get_feature_names_out())))
 
+    # Extra statistics (src/extra_figures.py), prefixed with X
+    for k, v in j("extra_stats.json").items():
+        out.append(macro("X" + k, v))
+
     (ROOT / "report" / "generated.tex").write_text("".join(out), encoding="utf-8")
-    print("report/generated.tex écrit")
+    print("report/generated.tex written")
 
 
 if __name__ == "__main__":

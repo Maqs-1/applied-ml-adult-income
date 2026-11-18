@@ -96,19 +96,19 @@ def main() -> None:
            "secondary_race_before": audit(y_te, pred_before, X_te[sec_col])}
 
     rows = []
-    for tag, pr in [("avant", pred_before), ("après", pred_after)]:
+    for tag, pr in [("before", pred_before), ("after", pred_after)]:
         mf = MetricFrame(metrics={k: GROUP_METRICS[k] for k in ["selection_rate", "tpr", "fpr"]},
                          y_true=y_te, y_pred=pr, sensitive_features=X_te[sens_col])
         for g, r in mf.by_group.iterrows():
-            rows += [{"phase": tag, "groupe": g, "métrique": m, "valeur": v} for m, v in r.items()]
+            rows += [{"phase": tag, "group": g, "metric": m, "value": v} for m, v in r.items()]
     df = pd.DataFrame(rows)
     fig, axes = plt.subplots(1, 3, figsize=(13, 4), sharey=False)
     for ax, m in zip(axes, ["selection_rate", "tpr", "fpr"]):
-        df[df["métrique"] == m].pivot(index="phase", columns="groupe", values="valeur").loc[["avant", "après"]].plot.bar(ax=ax, rot=0)
+        df[df["metric"] == m].pivot(index="phase", columns="group", values="value").loc[["before", "after"]].plot.bar(ax=ax, rot=0)
         ax.set_title(m)
         ax.set_ylim(0, ax.get_ylim()[1] * 1.3)
         ax.legend(loc="upper left", fontsize=7, ncol=2)
-    fig.suptitle(f"Équité par {sens_col} — {final}, test (avant/après ThresholdOptimizer)")
+    fig.suptitle(f"Fairness by {sens_col}: {final}, test (before/after ThresholdOptimizer)")
     fig.tight_layout()
     fig.savefig(p("figures/fairness_before_after.png"), dpi=120)
     plt.close(fig)

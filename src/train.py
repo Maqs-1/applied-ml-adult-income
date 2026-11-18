@@ -131,9 +131,9 @@ def tune(name: str, cfg: dict, X, y, writer, fh) -> optuna.Study:
 
     vals = [t.value for t in study.trials if t.value is not None]
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(vals, "o", alpha=0.5, label="essai")
-    ax.plot(np.maximum.accumulate(vals), "-", label="meilleur cumulé")
-    ax.set(xlabel="essai", ylabel="PR-AUC (CV 5 plis)", title=f"Optuna — {name}")
+    ax.plot(vals, "o", alpha=0.5, label="trial")
+    ax.plot(np.maximum.accumulate(vals), "-", label="best so far")
+    ax.set(xlabel="trial", ylabel="PR-AUC (5-fold CV)", title=f"Optuna: {name}")
     ax.legend()
     fig.tight_layout()
     fig.savefig(p(artifact), dpi=110)

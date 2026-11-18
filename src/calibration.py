@@ -50,16 +50,16 @@ def main() -> None:
                                "ece": round(ece(y_te, proba_iso), 4), **diagnose(y_te, proba_iso)}}
 
     fig, (ax, axh) = plt.subplots(1, 2, figsize=(11, 4.5))
-    ax.plot([0, 1], [0, 1], "k--", label="parfaitement calibré")
-    for lab, pr in [(f"{final} brut", proba), (f"{final} + isotonique", proba_iso)]:
+    ax.plot([0, 1], [0, 1], "k--", label="perfectly calibrated")
+    for lab, pr in [(f"{final} raw", proba), (f"{final} + isotonic", proba_iso)]:
         fp, mp = calibration_curve(y_te, pr, n_bins=10, strategy="quantile")
         ax.plot(mp, fp, "o-", label=f"{lab} (ECE={ece(y_te, pr):.3f})")
-    ax.set(xlabel="probabilité prédite moyenne", ylabel="fraction de positifs observée",
-           title="Courbe de fiabilité — test")
+    ax.set(xlabel="mean predicted probability", ylabel="observed share of positives",
+           title="Reliability curve (test)")
     ax.legend()
-    axh.hist(proba, bins=40, alpha=0.6, label="brut")
-    axh.hist(proba_iso, bins=40, alpha=0.6, label="isotonique")
-    axh.set(title="Distribution des probabilités prédites", xlabel="p(>50K)")
+    axh.hist(proba, bins=40, alpha=0.6, label="raw")
+    axh.hist(proba_iso, bins=40, alpha=0.6, label="isotonic")
+    axh.set(title="Distribution of predicted probabilities", xlabel="p(>50K)")
     axh.legend()
     fig.tight_layout()
     fig.savefig(p("figures/calibration_reliability.png"), dpi=120)

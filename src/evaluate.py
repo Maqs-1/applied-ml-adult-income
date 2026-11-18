@@ -40,8 +40,8 @@ def main() -> None:
         out["test"][name] = {"at_val_threshold": compute_metrics(y_te, proba, art["threshold"]),
                              "at_0.5": compute_metrics(y_te, proba, 0.5)}
         PrecisionRecallDisplay.from_predictions(y_te, proba, ax=ax, name=name)
-    ax.axhline(y_te.mean(), ls="--", c="grey", label="baseline (prévalence)")
-    ax.set_title("Courbes précision-rappel — test")
+    ax.axhline(y_te.mean(), ls="--", c="grey", label="baseline (prevalence)")
+    ax.set_title("Precision-recall curves (test)")
     ax.legend()
     fig.tight_layout()
     fig.savefig(p("figures/test_pr_curves.png"), dpi=120)

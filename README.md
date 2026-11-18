@@ -42,6 +42,7 @@ Tous les paramètres (graine 42, tailles des splits, nombre d'essais Optuna, att
 | `src/explain.py` | SHAP | 8 |
 | `src/calibration.py` | calibration | 9 |
 | `src/fairness.py` | équité + mitigation | 10 |
+| `src/extra_figures.py` | figures et statistiques d'analyse supplémentaires du rapport (ne change aucun résultat) | 1, 4, 8, 9, 10 |
 | `src/api.py` | endpoint FastAPI `/predict` | — |
 | `runs/trials_log.csv` | **journal de tous les essais Optuna** (params, métriques CV, artefact) | 7 |
 | `runs/*.json` | résultats chiffrés de chaque étape | — |

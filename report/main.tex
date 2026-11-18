@@ -1,229 +1,311 @@
 \documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage[french]{babel}
-\usepackage[margin=2.3cm]{geometry}
-\usepackage{graphicx,booktabs,longtable,array,float,caption,hyperref,xcolor,enumitem,amsmath}
+\usepackage[english]{babel}
+\usepackage[margin=2.2cm]{geometry}
 \usepackage{lmodern}
+\usepackage{graphicx,booktabs,longtable,array,float,caption,hyperref,xcolor,enumitem,amsmath}
 \hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue!50!black}
 \setlist{nosep,leftmargin=1.2em}
 \captionsetup{font=small}
+\setlength{\parskip}{3pt}
 \graphicspath{{../figures/}}
+\renewcommand{\topfraction}{0.9}\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.07}\renewcommand{\floatpagefraction}{0.85}
+\setcounter{topnumber}{3}\setcounter{totalnumber}{5}
 \input{generated.tex}
-\newcommand{\GroupNb}{10}% numéro de groupe d'après le planning de l'oral
+\newcommand{\GroupNb}{10}% group number from the oral defence timetable
 
-\title{\textbf{Prédire un revenu supérieur à 50\,k\$ : pipeline, réglage, explicabilité, calibration et équité}\\[2pt]
-\large Applied ML: Foundations, Engineering \& Evaluation (MSA-DATI07-05)}
-\author{Groupe \GroupNb{} : Max GUIRIEC, Amaniel ASRAT, Zackary AICH}
-\date{Novembre 2026}
+\title{\textbf{Who earns more than \$50K?}\\[2pt]
+\large A small but honest income classifier: tuning, explanations, calibration and fairness\\[4pt]
+\normalsize Applied ML: Foundations, Engineering \& Evaluation (MSA-DATI07-05)}
+\author{Group \GroupNb{}: Max GUIRIEC, Amaniel ASRAT, Zackary AICH}
+\date{November 2026}
 
 \begin{document}
 \maketitle
-\vspace{-1.2em}
+\vspace{-1.4em}
 \begin{center}
-\fbox{\parbox{0.92\linewidth}{\centering
-\textbf{Dataset utilisé : Option 1 --- Adult / Census Income} (recensement américain de 1994, \NRows{} lignes, 14 variables).\\
-\textbf{Dépôt GitHub (code, README, requirements, configuration, journal des essais) :}\\
+\fbox{\parbox{0.93\linewidth}{\centering
+\textbf{Dataset: Option 1 --- Adult / Census Income} (1994 US census extract, \NRows{} people, 14 attributes).\\
+\textbf{Code, README, requirements, config and full trial log:}
 \url{https://github.com/Maqs-1/applied-ml-adult-income}}}
 \end{center}
 
-\section{Cadrage du problème et analyse exploratoire}
-\paragraph{Tâche.} Prédire si une personne gagne plus de 50\,k\$ par an (classe positive) à partir de caractéristiques démographiques et professionnelles. Le jeu est chargé via \texttt{fetch\_openml}, avec un repli automatique sur la source UCI d'origine (mêmes \NRows{} lignes) : OpenML renvoyait une erreur 503 au moment du travail.
+\section*{What we set out to do}
+The Adult dataset is probably the most reused table in machine learning teaching, and that was precisely what made it interesting to us. Getting a good AUC on it is easy; the harder questions are the ones a team would face before putting such a model in front of real decisions. Is the score we report honest, or did we fit it to the test set without noticing? When the model says ``70\,\%'', does it mean 70\,\%? And who pays for its mistakes?
 
-\paragraph{Ce que montre l'EDA} (Fig.~\ref{fig:eda}). La classe positive représente \PosRate\,\% des lignes : le problème est déséquilibré, et un modèle qui prédit toujours ``$\leq$50K'' obtient déjà \BaseAcc{} d'accuracy (Sec.~\ref{sec:imb}). Les valeurs manquantes sont codées ``?'' et concentrées sur trois colonnes : \texttt{workclass} (\MissWork), \texttt{occupation} (\MissOcc) et \texttt{native-country} (\MissCountry) ; les effectifs manquants de \texttt{workclass} et \texttt{occupation} sont quasi identiques, ce qui suggère qu'elles manquent ensemble ; le manque peut donc être informatif. \CapZero\,\% des personnes ont un gain en capital nul, avec une queue très lourde. Enfin le taux de revenus élevés diffère fortement selon le sexe : \PosF\,\% chez les femmes (\ShareF\,\% de l'échantillon) contre \PosM\,\% chez les hommes, ce qui motivera l'audit d'équité (Sec.~\ref{sec:fair}).
+We built the project around those three questions. Everything below comes from one reproducible pipeline (\texttt{python run\_all.py}); every number in this report is pulled automatically from the result files the code writes, so nothing was copied by hand. Where something went wrong along the way, we say so.
+
+\section{Getting to know the data}
+\paragraph{The basic shape.} The target is whether a person's yearly income exceeds \$50K. Only \PosRate\,\% of the \NRows{} rows are positive, so a model that always answers ``no'' is right \BaseAcc{} of the time while being useless. That single fact drove our choice of metric (Section~\ref{sec:imb}). Missing values are written as ``?'' and appear in three columns only: \texttt{workclass} (\MissWork), \texttt{occupation} (\MissOcc) and \texttt{native-country} (\MissCountry). We loaded the data with \texttt{fetch\_openml} as required, but OpenML was returning HTTP 503 errors on the day we ran the pipeline, so our loader falls back to the original UCI files, which contain exactly the same \NRows{} rows.
 
 \begin{figure}[htbp]\centering
-\includegraphics[width=0.85\linewidth]{eda_overview.png}
-\caption{Vue d'ensemble : déséquilibre de la cible, distributions d'âge et d'heures, taux de positifs selon le niveau d'études, le sexe et le statut marital.}\label{fig:eda}
+\includegraphics[width=0.78\linewidth]{eda_overview.png}
+\caption{First look: class balance, age and hours by class, and the share of high earners by education, sex and marital status (full dataset).}\label{fig:eda}
 \end{figure}
 
-\paragraph{Découpage honnête.} Les \NDup{} doublons exacts sont supprimés \emph{avant} le découpage (sinon une même ligne pourrait être en entraînement et en test). Le découpage 60/20/20, \emph{stratifié sur (cible $\times$ sexe)} avec la graine 42, donne \NTrain{} lignes d'entraînement, \NVal{} de validation et \NTest{} de test, avec la même prévalence dans chacun. Les rôles sont stricts : \textbf{entraînement} = apprentissage et validation croisée d'Optuna ; \textbf{validation} = choix du seuil de décision, du modèle final, de la recalibration et de la mitigation ; \textbf{test} = lu uniquement pour rapporter les résultats finaux, jamais pour décider.
+\paragraph{What the first plots told us} (Fig.~\ref{fig:eda}). Three patterns stood out immediately. The share of high earners climbs steeply with years of education, and the curve gets steeper after about 12 years. Hours per week has a huge spike at exactly 40, which is a full-time contract rather than a natural distribution, so we expected the model to treat ``more than 40'' as meaningful. And marital status splits the population almost in two: married people living with a spouse are high earners far more often than anyone else. The gap between men (\PosM\,\%) and women (\PosF\,\%) is also large, and women make up only \ShareF\,\% of the sample. We kept that in mind for the fairness audit.
 
-\section{Feature engineering et Pipeline unique}\label{sec:fe}
-Tout le prétraitement et le modèle sont dans un seul \texttt{sklearn.pipeline.Pipeline} (\texttt{FeatureEngineer} $\rightarrow$ \texttt{ColumnTransformer} $\rightarrow$ modèle). Il est donc ré-appris dans chaque pli de validation croisée, sans fuite possible.
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.98\linewidth]{eda_extra.png}
+\caption{Training split only. Left: share of high earners by occupation (missing occupation in red, dashed line = overall rate). Middle: by relationship to the head of household. Right: capital gains on a log scale, split by class.}\label{fig:edaextra}
+\end{figure}
 
-\paragraph{Valeurs manquantes et encodage.} Variables numériques : imputation par la médiane (et standardisation pour le modèle linéaire seulement). Variables catégorielles : les manquants deviennent une modalité explicite ``Missing'' (le manque est informatif), puis one-hot, avec regroupement des modalités vues moins de 20 fois et gestion des modalités inconnues. On obtient \NCols{} colonnes.
+\paragraph{Looking closer, on the training split only} (Fig.~\ref{fig:edaextra}). We repeated part of the exploration on the training rows to avoid peeking at the test set. Occupation is a very strong signal: \XOccExecRate\,\% of executives and \XOccProfRate\,\% of professionals earn more than \$50K, against \XOccServRate\,\% in ``other service'' jobs and \XOccHouseRate\,\% in private household service. Rows with a missing occupation have a high-earner rate of only \XOccMissRate\,\%, well below the \XTrainPosRate\,\% average, and in \XMissBothShare\,\% of them \texttt{workclass} is missing too. Missingness here is not random noise; it mostly describes people outside regular employment. That is why we encode it as its own category instead of filling it with the most frequent value.
 
-\paragraph{Variables construites (justifiées).}
+Capital gains are zero for \CapZero\,\% of people, but they matter a lot when present: only \XCapGainShare\,\% of training rows have a gain, and \XCapGainPosRate\,\% of those are high earners versus \XCapGainZeroPosRate\,\% for everyone else. The right panel of Fig.~\ref{fig:edaextra} shows why a raw linear term would struggle: the distribution is a spike at zero and a long, lumpy tail.
+
+The relationship panel hides something important for later. ``Husband'' and ``Wife'' have almost the same high-earner rate (\XRelHusbandRate\,\% and \XRelWifeRate\,\%), but the two categories are not the same size at all. In the training data, \XHusbandMaleShare\,\% of ``Husband'' rows are men (by construction) and \XMarriedMaleShare\,\% of married people are men; \XMaleMarriedRate\,\% of men are married, against \XFemaleMarriedRate\,\% of women. Marital status and relationship are therefore very close proxies for sex. Removing the \texttt{sex} column from the model will not remove that information.
+
+\paragraph{An honest split.} We dropped the \NDup{} exact duplicate rows \emph{before} splitting, so that the same person cannot appear in both training and test. We then split 60/20/20, stratified on the target crossed with sex, using seed 42: \NTrain{} training rows, \NVal{} validation rows and \NTest{} test rows, all with the same prevalence. Each set has one job and only one:
 \begin{itemize}
-\item \texttt{log\_capital\_net} : logarithme signé de (gain $-$ perte en capital), pour écraser une distribution à queue très lourde.
-\item \texttt{has\_capital} : présence d'un revenu du capital, proxy de patrimoine.
-\item \texttt{is\_married} : marié(e) vivant avec son conjoint (7 modalités regroupées en un signal fort : foyer avec deux revenus potentiels).
-\item \texttt{overtime} : plus de 40 heures par semaine.
-\item \texttt{age\_x\_edu} : interaction âge $\times$ années d'études (expérience valorisée par le diplôme), surtout utile au modèle linéaire.
+\item \textbf{training}: fitting models and running Optuna's cross-validation;
+\item \textbf{validation}: every decision (decision threshold, choice of final model, recalibration, fairness post-processing);
+\item \textbf{test}: opened once at the end, to report. No choice in this report was made by looking at it.
 \end{itemize}
-\paragraph{Colonnes retirées.} \texttt{fnlwgt} (poids d'échantillonnage du recensement, pas une caractéristique de la personne) et \texttt{education} (redondante avec \texttt{education-num}). Les attributs sensibles \texttt{sex} et \texttt{race} sont \emph{exclus des entrées du modèle} mais conservés à part pour l'audit ; nous verrons en Sec.~\ref{sec:shap} et~\ref{sec:fair} que cela ne suffit pas à supprimer le biais.
 
-\section{Déséquilibre des classes}\label{sec:imb}
-\paragraph{Métriques.} L'accuracy est trompeuse ici : le baseline (prédire toujours la classe majoritaire) atteint \BaseAcc{} avec un rappel nul. Nous retenons la \textbf{PR-AUC} (précision moyenne) comme métrique d'optimisation, car elle se concentre sur la classe rare et ne dépend pas d'un seuil ; son niveau de référence est la prévalence (\BasePr). Nous rapportons aussi ROC-AUC, F1, précision, rappel, accuracy équilibrée et Brier.
+\section{From columns to features, inside one pipeline}\label{sec:fe}
+All preprocessing lives in a single scikit-learn \texttt{Pipeline}: a custom \texttt{FeatureEngineer} step, then a \texttt{ColumnTransformer}, then the model. Because the whole chain is refitted inside each cross-validation fold, imputation medians and one-hot categories are always learned from the training part of the fold only. Numerical columns are imputed with the median (and standardised for the logistic regression only, since trees do not care about scale). Categorical columns get an explicit \texttt{Missing} level, then one-hot encoding, with levels seen fewer than 20 times grouped together and unseen levels handled safely. This produces \NCols{} model inputs.
 
-\paragraph{Remède et justification.} Nous combinons deux leviers, appliqués dans \texttt{src/train.py} : (i) une \emph{repondération des classes}, traitée comme un hyperparamètre qu'Optuna tranche (\texttt{class\_weight} $\in$ \{aucun, balanced\} pour la régression logistique et le Random Forest ; \texttt{scale\_pos\_weight} égal au rapport négatifs/positifs ou 1 pour XGBoost) ; (ii) un \emph{seuil de décision} choisi sur la validation pour maximiser le F1, au lieu du seuil 0.5. Nous n'avons pas utilisé SMOTE : il fabrique des exemples synthétiques dans un espace mélangeant variables binaires et continues, n'est utile qu'en cas de déséquilibre extrême, et le déséquilibre ici (1 positif pour 3 négatifs) est modéré. Le rééchantillonnage devrait de toute façon vivre dans le pipeline pour ne pas fuiter.
+\paragraph{Five engineered features, each with a reason.}
+\begin{itemize}
+\item \texttt{log\_capital\_net}: signed log of (capital gain $-$ capital loss). It tames the long tail seen in Fig.~\ref{fig:edaextra} while keeping the sign.
+\item \texttt{has\_capital}: whether the person has any capital income at all, a rough proxy for wealth.
+\item \texttt{is\_married}: married and living with a spouse. It collapses seven marital categories into the one contrast that Fig.~\ref{fig:eda} shows matters.
+\item \texttt{overtime}: more than 40 hours a week, i.e.\ beyond the spike in the hours distribution.
+\item \texttt{age\_x\_edu}: age times years of education, our attempt to give the linear model the ``experience is worth more with a degree'' interaction that trees find on their own.
+\end{itemize}
 
-\paragraph{Ce que le réglage a décidé.} La régression logistique choisit \emph{aucune} repondération, le Random Forest \texttt{balanced}, XGBoost \texttt{scale\_pos\_weight} actif (Tab.~\ref{tab:params}, annexe). Le seuil choisi sur la validation vaut \ThrLog{} (logistique, sans repondération : un seuil bas compense), \ThrRf{} (Random Forest) et \ThrXgb{} (XGBoost). Pour XGBoost, passer du seuil 0.5 au seuil de validation fait passer le F1 de test de \FinFHalf{} à \FinFone{} (le rappel baisse de \FinRecallHalf{} à \FinRecall, la précision monte). Un effet secondaire important de la repondération apparaît en Sec.~\ref{sec:cal}.
+\paragraph{What we removed, and why.} \texttt{fnlwgt} is a census sampling weight, not a property of the person. \texttt{education} duplicates \texttt{education-num}. We also kept \texttt{sex} and \texttt{race} \emph{out of the model inputs}, while storing them for the audit. As the previous section suggested, this ``fairness through unawareness'' does not make the model blind to sex; Section~\ref{sec:fair} measures what is left.
 
-\section{Modèles, réglage Optuna et journal des essais}
-\paragraph{Les trois modèles.} Nous suivons une progression : \emph{baseline} (prévalence) $\rightarrow$ \textbf{régression logistique} (linéaire, interprétable) $\rightarrow$ \textbf{Random Forest} (non-linéarités et interactions, peu sensible au choix des hyperparamètres) $\rightarrow$ \textbf{XGBoost} (boosting, plus expressif mais plus sensible à ses hyperparamètres).
+\section{Dealing with imbalance}\label{sec:imb}
+\paragraph{Which metric.} Accuracy rewards the lazy answer here (\BaseAcc{} for the always-``no'' baseline, with zero recall). We optimise the \textbf{PR-AUC} (average precision) instead: it focuses on how well the rare class is found, it does not depend on a threshold, and its floor is simply the prevalence (\BasePr), which makes progress easy to read. We report ROC-AUC, F1, precision, recall, balanced accuracy and the Brier score next to it, for every model.
 
-\paragraph{Réglage avec validation croisée.} Pour chaque modèle, Optuna (échantillonneur TPE, graine 42) exécute \textbf{40 essais} qui maximisent la PR-AUC moyenne d'une validation croisée stratifiée à 5 plis \emph{sur l'entraînement uniquement}. Le score rapporté en CV est donc une moyenne sur des plis non vus par l'ajustement de chaque essai. Comme le meilleur essai est sélectionné parmi 40, ce score reste légèrement optimiste : c'est pourquoi la comparaison finale utilise la validation puis le test, jamais les scores de CV seuls. Le meilleur jeu de paramètres est ensuite ré-entraîné sur tout l'entraînement.
+\paragraph{Which remedy.} We used two levers, both visible in \texttt{src/train.py}. First, \emph{class reweighting}, but we did not impose it: we made it a hyperparameter and let Optuna decide (\texttt{class\_weight} none or balanced for the logistic regression and the random forest; \texttt{scale\_pos\_weight} equal to the negative/positive ratio, or 1, for XGBoost). Second, a \emph{decision threshold} chosen on the validation set to maximise F1, instead of the default 0.5. We decided against SMOTE: the imbalance is moderate (about one positive for three negatives), interpolating between one-hot encoded people creates odd synthetic individuals, and any resampling would have had to live inside the pipeline to avoid leaking into validation folds.
 
-\paragraph{Journal des essais (exigence 7).} Chaque essai écrit une ligne dans \texttt{runs/trials\_log.csv} : modèle, numéro, paramètres, moyennes et écart-type des métriques en CV, durée, et fichier d'artefact (courbe d'historique Optuna \texttt{figures/optuna\_<modèle>\_history.png} ; modèle sauvegardé \texttt{models/<modèle>.joblib} pour la ligne du meilleur essai). Les \NTrialsTotal{} essais sont reproduits en annexe.
+Optuna's answer was not uniform. The logistic regression preferred \emph{no} reweighting (best trial \XLogBestNone{} versus \XLogBestBal{} with balanced weights), the random forest preferred balanced weights (\XRfBestBal{} versus \XRfBestNone), and XGBoost preferred \texttt{scale\_pos\_weight} on (\XXgbBestW{} versus \XXgbBestNoW). These gaps are small, which is consistent with the theory: reweighting mainly shifts scores, and PR-AUC is a ranking metric. The threshold does more of the work.
 
-\begin{table}[H]\centering\small
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.66\linewidth]{threshold_sweep.png}
+\caption{Precision, recall and F1 of the final XGBoost model as the threshold moves, on the validation set.}\label{fig:sweep}
+\end{figure}
+
+\paragraph{Reading the threshold sweep} (Fig.~\ref{fig:sweep}). The chosen thresholds are \ThrLog{} for the logistic regression (low, because it was not reweighted), \ThrRf{} for the random forest and \ThrXgb{} for XGBoost (high, because reweighting pushed its scores up). The plot reassured us on one point: the F1 curve is flat at the top. Any threshold between \XSweepFlatLo{} and \XSweepFlatHi{} stays within 0.01 of the best validation F1 (\XSweepBestFone), so our choice is not a fragile knife-edge. On the test set, moving XGBoost from 0.5 to its validation threshold raises F1 from \FinFHalf{} to \FinFone; recall drops (\FinRecallHalf{} $\rightarrow$ \FinRecall) and precision rises. Which side of that trade-off is right depends on the application; we used F1 because the brief gives us no cost for each kind of error.
+
+\section{Three models and how we tuned them}
+\paragraph{The progression.} We compared a \emph{baseline} that predicts the prevalence, a \textbf{logistic regression} (linear and fully readable), a \textbf{random forest} (non-linear, captures interactions, fairly robust to its settings) and \textbf{XGBoost} (gradient boosting, more expressive and more sensitive to its hyperparameters).
+
+\paragraph{Tuning without fooling ourselves.} For each model, Optuna (TPE sampler, seed 42) ran \textbf{40 trials}, each scored by the mean PR-AUC of a 5-fold stratified cross-validation \emph{on the training set only}. Every trial is therefore judged on folds it was not fitted on. Picking the best of 40 trials still flatters the winner a little, which is why we never compare models on their CV scores alone: the final comparison uses validation, then test. The best parameters are then refitted on the full training set.
+
+We should be open about one incident. Our first full run had a 30-minute time limit per model, which we had set as a safety net. XGBoost hit it after a single trial and the random forest after 26. We noticed because the log was far too short, discarded the whole run, raised the limit and narrowed XGBoost's search space slightly. Only the second, complete run (\NTrialsTotal{} trials) is reported here.
+
+\paragraph{Run log.} Every trial writes one line to \texttt{runs/trials\_log.csv}: model, trial number, parameters, mean and standard deviation of each CV metric, duration, and the artefact it belongs to (the Optuna history plot, and for the best trial the saved \texttt{models/<model>.joblib}). The full log is in Appendix~\ref{app:log}.
+
+\begin{table}[htbp]\centering\small
 \begin{tabular}{lrrrrrr}\toprule
-Modèle & Essais & PR-AUC CV & ROC-AUC CV & PR-AUC val. & F1 val. & Seuil \\ \midrule
+Model & Trials & CV PR-AUC & CV ROC-AUC & Val.\ PR-AUC & Val.\ F1 & Threshold \\ \midrule
 \TabCV \\ \bottomrule
 \end{tabular}
-\caption{Meilleur essai de chaque modèle : validation croisée sur l'entraînement, puis validation (seuil choisi sur la validation).}\label{tab:cv}
+\caption{Best trial of each model: cross-validation on the training set, then validation (with the threshold chosen on validation).}\label{tab:cv}
 \end{table}
 
-\section{Comparaison des modèles sur le test}
-Le modèle final est choisi \emph{avant} de regarder le test, par la PR-AUC de validation : c'est \FinalModel. Les trois modèles sont ensuite évalués une seule fois sur le test, avec le même protocole et le seuil fixé en validation (Tab.~\ref{tab:test}, Fig.~\ref{fig:pr}).
+\begin{figure}[htbp]\centering
+\includegraphics[width=\linewidth]{optuna_landscape.png}
+\caption{What the 40 trials of each model looked like. Left: all CV PR-AUC scores. Then each model's score against its most influential hyperparameter.}\label{fig:landscape}
+\end{figure}
 
-\begin{table}[H]\centering\small
+\paragraph{What the search landscape tells us} (Fig.~\ref{fig:landscape}). The three models behave very differently under tuning.
+\begin{itemize}
+\item The \textbf{logistic regression} barely cares: \XWithinLog{} of its 40 trials are within 0.005 of the best score. Once the regularisation strength $C$ is above roughly 0.05, the curve is flat. Tuning bought it almost nothing; its ceiling is the linear form, not the settings.
+\item The \textbf{random forest} has a wider spread (from \XTrialMinRf{} to \XTrialMaxRf). Shallow trees are clearly worse, and the best trials use depths in the low-to-mid teens with small leaves.
+\item \textbf{XGBoost} has the highest scores but also the worst single trial among the tree models (\XTrialMinXgb, a depth-2 model with a small learning rate, i.e.\ badly underfitted). Its good region is broad: \XWithinXgb{} trials are within 0.005 of the best, mostly with depths around 4 to 6 and learning rates of a few hundredths. The retained model uses a depth of 5 and a learning rate of about 0.05.
+\end{itemize}
+The standard deviation of the best trial's PR-AUC across the five folds is about \XFoldStdXgb{} for XGBoost and \XFoldStdRf{} for the random forest. The gap between their best CV scores (\CvPrRf{} versus \CvPrXgb) is a few times larger than that, which makes us fairly confident the ordering is real, although this is a rule of thumb rather than a formal test. In wall-clock terms the median trial took \XTimeLog{}\,s for the logistic regression, \XTimeRf{}\,s for the random forest and \XTimeXgb{}\,s for XGBoost.
+
+\section{Results on the test set}
+The final model was chosen \emph{before} opening the test set, on validation PR-AUC: it is \FinalModel. We then evaluated all three models once on the test set, each with its own validation threshold (Table~\ref{tab:test}, Figs.~\ref{fig:pr} and~\ref{fig:roc}).
+
+\begin{table}[htbp]\centering\small
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{lcccccccc}\toprule
-Modèle & PR-AUC & ROC-AUC & F1 & Préc. & Rappel & Acc. éq. & Brier & F1@0.5 \\ \midrule
+Model & PR-AUC & ROC-AUC & F1 & Prec. & Recall & Bal.\ acc. & Brier & F1@0.5 \\ \midrule
 \TabTest \\ \bottomrule
 \end{tabular}
-\caption{Résultats sur le test (\NTest{} lignes), seuil choisi en validation. Le baseline est évalué sur la validation. Le modèle final est en gras.}\label{tab:test}
+\caption{Test results (\NTest{} rows), threshold chosen on validation. The baseline row is computed on validation. Final model in bold.}\label{tab:test}
 \end{table}
 
 \begin{figure}[htbp]\centering
-\includegraphics[width=0.58\linewidth]{test_pr_curves.png}
-\caption{Courbes précision-rappel sur le test ; la ligne pointillée est la prévalence.}\label{fig:pr}
+\includegraphics[width=0.42\linewidth]{test_pr_curves.png}
+\caption{Precision--recall curves on the test set. The dashed line is the prevalence, i.e.\ what a random ranking would achieve.}\label{fig:pr}
 \end{figure}
-
-\paragraph{Ce que chaque étape apporte.}
-\begin{itemize}
-\item \emph{Baseline $\rightarrow$ régression logistique} : la PR-AUC passe de \BasePr{} à \TestPrLog{} : les variables (études, âge, statut marital, heures) portent déjà l'essentiel du signal, et le modèle reste entièrement lisible.
-\item \emph{Logistique $\rightarrow$ Random Forest} : le gain est le plus fort (PR-AUC \TestPrRf{}, F1 \TestFoneRf{}). Il provient vraisemblablement des interactions et non-linéarités (effet de l'âge, du capital, du statut marital) que la logistique ne capte pas, malgré \texttt{age\_x\_edu} ; nous n'avons pas isolé cette cause par une ablation.
-\item \emph{Random Forest $\rightarrow$ XGBoost} : gain plus modeste (PR-AUC \TestPrXgb, ROC-AUC \TestRocXgb), cohérent en CV (\CvPrRf{} $\rightarrow$ \CvPrXgb{}) et en validation (\ValPrRf{} $\rightarrow$ \ValPrXgb). Nous n'avons pas calculé d'intervalles de confiance (limite, Sec.~\ref{sec:lim}) : l'écart RF/XGBoost est petit, et la cohérence sur trois jeux de données est notre seul argument pour le retenir.
-\end{itemize}
-Le score de test de \FinalModel{} (\TestPrXgb) est supérieur à son score de CV (\CvPrXgb) : cette différence est de l'ordre de la variabilité d'un échantillon de test de cette taille, et ne signale pas de fuite (le test n'a servi à aucun choix) ; nous ne l'interprétons pas davantage.
-
-\section{Explicabilité (SHAP)}\label{sec:shap}
-Nous utilisons \texttt{TreeExplainer} sur le pipeline final, appliqué aux variables transformées, sur 1\,000 lignes de test tirées au hasard (graine fixée).
 
 \begin{figure}[htbp]\centering
-\includegraphics[width=0.78\linewidth]{shap_summary.png}
-\caption{Importance globale (SHAP beeswarm) : chaque point est une personne, sa couleur la valeur de la variable.}\label{fig:shap}
+\includegraphics[width=\linewidth]{test_roc_confusion.png}
+\caption{ROC curves and confusion matrices on the test set, each model at its own validation threshold.}\label{fig:roc}
 \end{figure}
 
-\begin{table}[H]\centering\small
+\paragraph{What each step bought us.}
+\begin{itemize}
+\item \emph{Baseline $\rightarrow$ logistic regression}: PR-AUC goes from \BasePr{} to \TestPrLog. Most of the signal is already reachable with a linear model on well-prepared features.
+\item \emph{Logistic regression $\rightarrow$ random forest}: the biggest jump (PR-AUC \TestPrRf, F1 \TestFoneRf). The most likely reason is the non-linear effects we see later in the SHAP plots (age and hours rise then flatten, capital gains act in jumps), which a single linear term cannot follow even with our interaction feature. We did not run an ablation to prove it.
+\item \emph{Random forest $\rightarrow$ XGBoost}: a smaller but consistent gain, in CV (\CvPrRf{} $\rightarrow$ \CvPrXgb), on validation (\ValPrRf{} $\rightarrow$ \ValPrXgb) and on test (\TestPrRf{} $\rightarrow$ \TestPrXgb).
+\end{itemize}
+
+\paragraph{The confusion matrices show different personalities.} The ROC curves alone make the three models look close (Fig.~\ref{fig:roc}, left). The matrices tell a more useful story. The logistic regression, with its low threshold, finds the most high earners (\XTpLog) but pays for it with \XFpLog{} false alarms. The random forest is the most cautious: the fewest false positives (\XFpRf) but the most missed high earners (\XFnRf). XGBoost sits in between with \XTpXgb{} true positives, \XFpXgb{} false positives and \XFnXgb{} misses, which is why it has the best F1. If the downstream use punished false alarms much more than misses, the random forest at its current threshold would be a defensible choice too.
+
+Finally, XGBoost's test PR-AUC (\TestPrXgb) is a bit higher than its CV score (\CvPrXgb). Since the test set played no part in any decision, we read this as ordinary sampling variation on \NTest{} rows, not as a sign of leakage. We did not compute confidence intervals, so we do not interpret the difference further.
+
+\section{What drives the predictions (SHAP)}\label{sec:shap}
+We used SHAP's \texttt{TreeExplainer} on the final pipeline, applied to the transformed features of 1{,}000 randomly drawn test rows (fixed seed). SHAP values are in log-odds and add up to the difference between a person's score and the average score.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.6\linewidth]{shap_summary.png}
+\caption{Global importance (SHAP beeswarm). Each dot is a person; colour is the feature value, horizontal position its push on the prediction.}\label{fig:shap}
+\end{figure}
+
+\begin{table}[htbp]\centering\small
 \begin{tabular}{rlr}\toprule
-Rang & Variable & Moyenne des $|$SHAP$|$ \\ \midrule
+Rank & Feature & Mean $|$SHAP$|$ \\ \midrule
 \TabShap \\ \bottomrule
 \end{tabular}
-\caption{Les dix variables les plus influentes.}\label{tab:shap}
+\caption{The ten most influential inputs.}\label{tab:shap}
 \end{table}
 
-\paragraph{Cohérence métier.} Les variables dominantes sont plausibles : le statut marital (\texttt{is\_married} et \texttt{marital-status\_Married-civ-spouse}, deux encodages quasi identiques dont l'importance se cumule), les gains en capital, le niveau d'études, l'âge/l'expérience et les heures travaillées sont des déterminants classiques du revenu. En revanche, le poids du statut marital est un \emph{signal d'alerte} : dans les données de 1994, un conjoint marié est très souvent un homme chef de foyer (\texttt{relationship\_Husband} figure parmi les dix premières variables). Le modèle peut donc retrouver une partie de l'information sur le sexe à travers des variables corrélées, même sans y avoir accès ; nous n'avons pas mesuré cet effet directement, c'est une hypothèse que l'écart d'équité de la Sec.~\ref{sec:fair} rend crédible.
-
-\paragraph{Explications locales.} Fig.~\ref{fig:local} et Tab.~\ref{tab:local} présentent quatre cas du test : un vrai positif, un vrai négatif, un faux positif et un faux négatif. Sur le faux positif, l'occupation (\texttt{Other-service}) tire la probabilité vers le bas, mais l'effet cumulé du mariage, des études et de l'âge la maintient au-dessus du seuil ; sur le faux négatif, un faible niveau d'études et l'interaction âge $\times$ études dominent alors que la personne gagne plus de 50\,k\$ : le modèle n'a probablement pas accès aux facteurs absents des données (ancienneté, employeur). Les erreurs sont donc cohérentes avec une lecture ``statistique'' du profil.
+\paragraph{Does the ranking make business sense?} Mostly, yes (Fig.~\ref{fig:shap}, Table~\ref{tab:shap}). Capital gains, education, age and hours worked are textbook drivers of income. Two of our engineered features (\texttt{log\_capital\_net} and \texttt{age\_x\_edu}) made the top three, which was a pleasant confirmation that the feature work was not cosmetic. The dominant signal, though, is marital status, and it appears twice: \texttt{is\_married} and the one-hot column \texttt{marital-status\_Married-civ-spouse} are almost the same variable, and SHAP splits the credit between correlated inputs, so their combined weight is larger than either line suggests. Being married adds \XMarriedShapOn{} log-odds on average; not being married costs \XMarriedShapOff. Given what Section~1 showed (married people in this data are overwhelmingly men), this is the main channel through which information about sex reaches a model that never sees the \texttt{sex} column.
 
 \begin{figure}[htbp]\centering
-\includegraphics[width=0.48\linewidth]{shap_local_vrai_positif.png}\hfill
-\includegraphics[width=0.48\linewidth]{shap_local_vrai_negatif.png}\\[2pt]
-\includegraphics[width=0.48\linewidth]{shap_local_faux_positif.png}\hfill
-\includegraphics[width=0.48\linewidth]{shap_local_faux_negatif.png}
-\caption{Explications locales (waterfall SHAP) : vrai positif, vrai négatif (haut), faux positif, faux négatif (bas).}\label{fig:local}
+\includegraphics[width=\linewidth]{shap_dependence.png}
+\caption{SHAP dependence for four inputs (colour = married or not). Each panel shows how the value of one feature moves the prediction.}\label{fig:dep}
 \end{figure}
 
-\begin{table}[H]\centering\small
-\begin{tabular}{lccp{7.4cm}}\toprule
-Cas & Vrai & $p(>50\mathrm{K})$ & Principales contributions (SHAP, log-odds) \\ \midrule
+\paragraph{The shapes are more interesting than the ranking} (Fig.~\ref{fig:dep}). \emph{Age} pushes predictions down strongly for people in their twenties, turns positive around \XAgeCross, plateaus through middle age and falls again after about 60, which looks like a career curve followed by retirement. \emph{Education} is negative or neutral up to high-school level, turns positive at about \XEduCross{} years and adds roughly one log-odds for doctorates and professional degrees. \emph{Hours} only start to help beyond about \XHoursCross{} hours a week and level off after 50--60. \emph{Capital} is the strangest: the effect is not monotone but comes in clusters. Large gains (log value above roughly 9, i.e.\ several thousand dollars) push predictions up by four to six log-odds, while some moderate gains and some losses push them down. We think this reflects the way the census reports capital income (a few specific amounts are very common), and it is a reminder that a tree model will happily learn quirks of the data collection. These curves also explain why the random forest beat the logistic regression so clearly: none of them is a straight line.
+
+\paragraph{Individual explanations} (Fig.~\ref{fig:local}, Table~\ref{tab:local}). We picked one true positive, one true negative, one false positive and one false negative from the test sample. The two errors are the instructive ones. The false positive is a married 52-year-old man with a bachelor-level education working in ``other service''. His occupation pulls the prediction down, but marriage, education and age together pull harder, and the model ends up above its threshold. The false negative is a married 46-year-old machine operator with little formal education who in fact earns more than \$50K. Here low education dominates. In both cases the model reasons the way the averages in Fig.~\ref{fig:edaextra} would suggest; it simply has no access to what makes these two people exceptions (seniority, employer, overtime pay).
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.49\linewidth]{shap_local_vrai_positif.png}\hfill
+\includegraphics[width=0.49\linewidth]{shap_local_vrai_negatif.png}\\[2pt]
+\includegraphics[width=0.49\linewidth]{shap_local_faux_positif.png}\hfill
+\includegraphics[width=0.49\linewidth]{shap_local_faux_negatif.png}
+\caption{Local explanations (SHAP waterfalls): true positive and true negative (top), false positive and false negative (bottom).}\label{fig:local}
+\end{figure}
+
+\begin{table}[htbp]\centering\small
+\begin{tabular}{lccp{7.6cm}}\toprule
+Case & True & $p(>50\mathrm{K})$ & Main contributions (SHAP, log-odds) \\ \midrule
 \TabShapLocal \\ \bottomrule
 \end{tabular}
-\caption{Résumé des quatre cas locaux.}\label{tab:local}
+\caption{The four local cases in numbers.}\label{tab:local}
 \end{table}
 
-\section{Calibration}\label{sec:cal}
+\section{Can we trust the probabilities?}\label{sec:cal}
 \begin{figure}[htbp]\centering
-\includegraphics[width=0.93\linewidth]{calibration_reliability.png}
-\caption{Courbe de fiabilité de \FinalModel{} sur le test (bacs par quantiles), avant et après recalibration isotonique apprise sur la validation ; distribution des probabilités prédites.}\label{fig:cal}
+\includegraphics[width=0.82\linewidth]{calibration_reliability.png}
+\caption{Reliability curve of \FinalModel{} on the test set (quantile bins), raw and after isotonic recalibration learned on validation; right, the distribution of predicted probabilities.}\label{fig:cal}
 \end{figure}
-\paragraph{Diagnostic.} Le Brier score brut vaut \CalBrier{} et l'ECE \CalEce. La probabilité moyenne prédite est \CalMeanPred{} alors que le taux réel de positifs est \CalObs{} : le modèle \textbf{sur-estime systématiquement la probabilité de la classe positive} (écart moyen \CalGap{}), il est donc ``sur-confiant'' vers les revenus élevés (Fig.~\ref{fig:cal}). La cause est directe : la repondération des classes choisie par Optuna (\texttt{scale\_pos\_weight}) améliore le classement (PR-AUC) mais déplace les probabilités vers le haut. À titre de comparaison, la régression logistique non repondérée est bien mieux calibrée (ECE de \EceLog{} contre \CalEce{} ; leurs Brier sont proches, \BrierLog{} contre \FinBrier), mais son classement est nettement moins bon (Tab.~\ref{tab:test}).
-\paragraph{Correctif et décision.} Une recalibration isotonique apprise sur la validation (modèle de base gelé) ramène l'ECE à \CalIsoEce{} et le Brier à \CalIsoBrier{} sur le test. \textbf{Nous ne ferions pas confiance aux probabilités brutes pour une décision aval} (par exemple un seuil de coût, un tarif ou un classement par probabilité absolue) ; en revanche, pour un simple \emph{classement} ou une décision avec le seuil appris, le modèle brut convient, car le seuil a été choisi sur ses sorties brutes. Pour exploiter les probabilités, il faut utiliser la version recalibrée (\texttt{models/<modèle>\_isotonic.joblib}).
 
-\section{Audit d'équité et mitigation}\label{sec:fair}
-\paragraph{Attribut sensible et définitions.} L'attribut est le \textbf{sexe} (race en analyse secondaire). Deux définitions sont comparées : la \emph{parité démographique} (le taux de prédictions positives $P(\hat Y=1\mid A)$ est le même entre groupes) et l'\emph{equalized odds} (mêmes TPR et FPR entre groupes, i.e.\ à revenu réel donné, la même chance d'être bien ou mal classé). Les taux de base réels diffèrent (\PosF\,\% contre \PosM\,\%) : exiger la parité démographique reviendrait à ignorer un signal réel et à créer des erreurs différentes selon les groupes, c'est pourquoi la \textbf{mitigation vise l'equalized odds}.
+\paragraph{Diagnosis.} The raw model has a Brier score of \CalBrier{} and an ECE of \CalEce. The clearest symptom is in the averages: the mean predicted probability on the test set is \CalMeanPred, while the real share of high earners is \CalObs. The reliability curve (Fig.~\ref{fig:cal}) sits below the diagonal almost everywhere, and the per-bin table below shows the same thing: the model \textbf{overestimates the probability of a high income}, so it is over-confident about the positive class. When it says 0.5, the observed rate is much lower.
 
-\paragraph{Audit avant mitigation} (test, Tab.~\ref{tab:fair}). Le taux de sélection est de \SelFB{} pour les femmes et \SelMB{} pour les hommes (écart de parité démographique \DpdB, ratio \DprB). Le TPR est de \TprFB{} contre \TprMB{}, et le FPR de \FprFB{} contre \FprMB{} : l'écart d'equalized odds vaut \EodB. Le modèle est donc plus généreux avec les hommes, à la fois en vrais et en faux positifs. Une partie de l'écart de sélection reflète la différence réelle des taux de base, et le modèle la dépasse légèrement (écart de sélection \DpdB{} contre un écart réel de \RealGap{} entre les taux de base). Analyse secondaire sur la race : écart de parité démographique \RaceDpd{} et d'equalized odds \RaceEod{} (Tab.~\ref{tab:race}), à lire avec prudence car certains groupes sont petits.
+\begin{table}[htbp]\centering\small
+\begin{tabular}{rccc}\toprule
+Bin & Mean predicted & Observed share & Gap \\ \midrule
+\TabCalBins \bottomrule
+\end{tabular}
+\caption{Reliability by decile of predicted probability (raw model, test).}\label{tab:bins}
+\end{table}
 
-\paragraph{Mitigation.} Nous appliquons \texttt{ThresholdOptimizer} de Fairlearn (post-traitement, contrainte \texttt{equalized\_odds}) sur le modèle gelé : il apprend, \emph{sur la validation}, un seuil (éventuellement randomisé) par groupe. Il est évalué une seule fois sur le test. Avantages : le modèle n'est pas ré-entraîné et la contrainte est ciblée ; inconvénients : il \emph{utilise le sexe à l'inférence} (ce qui peut poser problème légalement) et ses prédictions sont randomisées (graine fixée).
+The cause is not mysterious. The class reweighting that Optuna chose (\texttt{scale\_pos\_weight}) improves ranking a little, but it tells the model that positives count roughly three times more than they really do, and the probabilities move up accordingly. The unweighted logistic regression shows the contrast: its ranking is weaker, but its probabilities are far better calibrated (ECE \EceLog{} against \CalEce), even though the two models have similar Brier scores (\BrierLog{} and \FinBrier). This was the clearest trade-off of the project: the setting that helped our optimisation metric quietly damaged the probabilities, and nothing in the PR-AUC would have warned us.
 
-\begin{table}[H]\centering\small
+\paragraph{Fix and verdict.} Isotonic recalibration, fitted on the validation set with the model frozen, brings the test ECE down to \CalIsoEce{} and the Brier score to \CalIsoBrier. Our verdict: \textbf{we would not use the raw probabilities as they are} for anything that reads them as real chances (an expected-cost threshold, a price, a risk score shown to a person). For ranking people, or for a yes/no decision with the threshold we learned on validation, the raw model is fine, because that threshold was chosen on its raw outputs. If probabilities are needed, the recalibrated model (\texttt{models/xgboost\_isotonic.joblib}) is the one to use.
+
+\section{Who gets it wrong? Fairness audit}\label{sec:fair}
+\paragraph{Attribute and definitions.} The sensitive attribute is \textbf{sex}, with race as a secondary check. We compare two definitions. \emph{Demographic parity} asks that both groups receive positive predictions at the same rate. \emph{Equalized odds} asks for the same true positive rate and the same false positive rate in both groups: among people who really earn more than \$50K, men and women should be recognised equally often, and among those who do not, they should be wrongly flagged equally often. Because the true base rates differ (\PosF\,\% versus \PosM\,\%), forcing demographic parity would mean ignoring a real difference in the data. We therefore made \textbf{equalized odds the target of the mitigation}, and we still report both.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\linewidth]{group_diagnostics.png}
+\caption{Diagnostics by sex on the test set, raw model. Left: score distributions by sex and true class. Middle: true positive rate, false positive rate and selection rate as one shared threshold moves. Right: calibration by sex.}\label{fig:groups}
+\end{figure}
+
+\paragraph{Where the gap comes from} (Fig.~\ref{fig:groups}). Before computing fairness metrics we looked at how the model treats each group, and the result is worth spelling out. The model actually \emph{ranks} women better than men: the ROC-AUC is \XAucF{} for women and \XAucM{} for men. The problem is not the ranking but the single threshold applied to two different score distributions. Women who really earn more than \$50K get a slightly lower average score than men in the same situation (\XMeanPPosF{} versus \XMeanPPosM), so at a shared threshold more of them fall below it. Men who earn less than \$50K get much higher scores than women in the same situation (\XMeanPNegM{} versus \XMeanPNegF), so men collect far more false alarms. The middle panel shows that no single threshold equalises both rates at once. Calibration differs too: both groups are over-predicted, men more (ECE \XEceM{} versus \XEceF{} for women).
+
+\paragraph{The audit before mitigation} (Table~\ref{tab:fair}). Women are selected at a rate of \SelFB{} against \SelMB{} for men, a demographic parity difference of \DpdB{} (ratio \DprB). Their true positive rate is \TprFB{} against \TprMB, and their false positive rate \FprFB{} against \FprMB: the equalized odds difference is \EodB. Part of the selection gap reflects the real difference in base rates (\RealGap), but the model's gap is somewhat larger. The secondary audit by race (Table~\ref{tab:race}) gives a demographic parity difference of \RaceDpd{} and an equalized odds difference of \RaceEod; some groups have fewer than 100 people in the test set, so those numbers are noisy and we did not mitigate on them.
+
+\paragraph{Mitigation.} We applied Fairlearn's \texttt{ThresholdOptimizer} with the \texttt{equalized\_odds} constraint to the frozen model. It learns, \emph{on the validation set}, a (possibly randomised) threshold for each group, and we evaluated it once on the test set. We chose post-processing because it leaves the trained model untouched and targets exactly the threshold problem Fig.~\ref{fig:groups} revealed. Its drawbacks are real: it needs the sex of each person at prediction time, which may not be legal in some settings, and its predictions are randomised for some people (we fixed the seed so results are reproducible).
+
+\begin{table}[htbp]\centering\small
 \begin{tabular}{llccccc}\toprule
-Phase & Groupe & Sélection & TPR & FPR & Précision & Accuracy \\ \midrule
+Phase & Group & Selection & TPR & FPR & Precision & Accuracy \\ \midrule
 \TabFair \bottomrule
 \end{tabular}
-\caption{Métriques par sexe sur le test, avant et après ThresholdOptimizer.}\label{tab:fair}
+\caption{Metrics by sex on the test set, before and after ThresholdOptimizer.}\label{tab:fair}
 \end{table}
 
 \begin{figure}[htbp]\centering
-\includegraphics[width=0.93\linewidth]{fairness_before_after.png}
-\caption{Taux de sélection, TPR et FPR par sexe, avant et après mitigation (test).}\label{fig:fair}
+\includegraphics[width=0.9\linewidth]{fairness_before_after.png}
+\caption{Selection rate, TPR and FPR by sex, before and after mitigation (test).}\label{fig:fair}
 \end{figure}
 
-\begin{table}[H]\centering\small
+\paragraph{Before and after.} The equalized odds difference falls from \EodB{} to \EodA, so the constraint did its job. Demographic parity is not reached (\DpdB{} $\rightarrow$ \DpdA), which is expected when base rates differ. The cost is substantial: overall F1 drops from \FoneB{} to \FoneA{} and accuracy from \AccB{} to \AccA. Fig.~\ref{fig:fair} and Table~\ref{tab:fair} show how the equality was obtained. The model became \emph{much more permissive for women} (selection \SelFB{} $\rightarrow$ \SelFA, false positive rate \FprFB{} $\rightarrow$ \FprFA), and their precision collapsed from \PrecFB{} to \PrecFA. In plain words, women are now recognised as often as men when they are high earners, but at the price of many more women being wrongly flagged. Whether that is acceptable depends entirely on what a false positive costs in the real use case. Without that information we do not claim that either model is ``the fair one''; we document the trade-off so that someone who knows the context can choose.
+
+\begin{table}[htbp]\centering\small
 \begin{tabular}{lrccc}\toprule
-Groupe (race) & Effectif & Sélection & TPR & FPR \\ \midrule
+Group (race) & Count & Selection & TPR & FPR \\ \midrule
 \TabRace \\ \bottomrule
 \end{tabular}
-\caption{Audit secondaire par race, avant mitigation (test).}\label{tab:race}
+\caption{Secondary audit by race, before mitigation (test).}\label{tab:race}
 \end{table}
 
-\paragraph{Résultat avant/après.} L'écart d'equalized odds tombe de \EodB{} à \EodA{} : l'objectif est atteint. La parité démographique ne l'est pas (\DpdB{} $\rightarrow$ \DpdA), ce qui est attendu puisque les taux de base diffèrent. Mais le coût est réel : le F1 global passe de \FoneB{} à \FoneA{} et l'accuracy de \AccB{} à \AccA. La raison est visible dans le Tab.~\ref{tab:fair} : la contrainte est satisfaite en \emph{rendant le modèle bien plus permissif avec les femmes} (sélection \SelFB{} $\rightarrow$ \SelFA, FPR \FprFB{} $\rightarrow$ \FprFA), si bien que leur précision s'effondre de \PrecFB{} à \PrecFA. Autrement dit, l'égalité des taux d'erreur est obtenue en multipliant les faux positifs chez les femmes. Que ce compromis soit acceptable dépend du coût des faux positifs dans l'usage visé ; sans ce contexte, nous ne recommandons ni l'un ni l'autre des deux modèles, nous documentons le compromis.
+\section{What we would do with more time}\label{sec:lim}
+\paragraph{Reproducibility.} Seed 42 everywhere, pinned versions in \texttt{requirements.txt} (Python 3.12), all settings in \texttt{config.yaml}, one command to rerun everything, and a script (\texttt{report/gen\_numbers.py}) that writes every figure quoted in this report from the result files. A small FastAPI endpoint (\texttt{src/api.py}) serves the final model.
 
-\section{Reproductibilité, limites et honnêteté méthodologique}\label{sec:lim}
-\paragraph{Reproductibilité.} Graine 42 partout, versions épinglées dans \texttt{requirements.txt} (Python 3.12), paramètres dans \texttt{config.yaml}, une commande pour tout relancer (\texttt{python run\_all.py}). Tous les chiffres de ce rapport sont générés par \texttt{report/gen\_numbers.py} à partir des fichiers \texttt{runs/*.json} produits par le code ; aucun n'est saisi à la main. Un endpoint de prédiction FastAPI (\texttt{src/api.py}) sert le modèle final.
-\paragraph{Limites.}
+\paragraph{Limits we are aware of.}
 \begin{itemize}
-\item Un seul découpage et aucun intervalle de confiance (pas de bootstrap) : les petits écarts, notamment RF contre XGBoost, ne sont pas testés statistiquement.
-\item Les résultats du test ont servi à \emph{rapporter} SHAP, calibration et équité, mais aucune décision (hyperparamètres, seuil, modèle, recalibration, mitigation) n'a été prise sur le test.
-\item Données de 1994 : la cible et les inégalités qu'elle reflète sont historiques ; l'audit d'équité illustre une méthode, il ne valide pas un usage réel. Nous n'auditons qu'un attribut binaire et une analyse secondaire.
-\item Optuna optimise la PR-AUC seule ; la calibration n'est pas dans l'objectif, d'où la sur-confiance observée.
-\item Une première exécution complète a dû être refaite : un garde-fou de temps trop court avait interrompu le réglage de XGBoost ; seuls les résultats de la seconde exécution, complète (40 essais par modèle), figurent ici.
+\item \textbf{No confidence intervals.} One split and no bootstrap: the random forest versus XGBoost gap is supported by consistency across CV, validation and test, not by a formal test. Bootstrapping the test metrics is the first thing we would add.
+\item \textbf{One objective.} Optuna optimised PR-AUC only, which is exactly how the calibration problem slipped in. A combined objective (PR-AUC with a calibration penalty) or recalibration inside the tuning loop would be worth trying.
+\item \textbf{The test set is reused for reporting.} SHAP, calibration and fairness are all reported on the same test set. No decision was made on it, but these analyses are not independent of each other.
+\item \textbf{Old data, one binary attribute.} The data are from 1994; the target itself carries historical inequalities. Our audit illustrates a method on one binary attribute (plus a quick look at race); it does not validate any real-world use.
 \end{itemize}
 
-\section*{Utilisation d'une IA}
-Nous avons utilisé \textbf{Claude Code} (Anthropic) comme assistant de développement : écriture et débogage des scripts Python du dépôt, génération du squelette du rapport LaTeX et de la préparation de l'oral. Toutes les valeurs numériques du rapport proviennent de l'exécution du code (génération automatique) et non de l'IA. Les choix méthodologiques exposés ci-dessus sont décrits pour que chaque membre puisse les expliquer et les défendre.
+\section*{Use of AI}
+We used \textbf{Claude Code} (Anthropic) as a coding assistant: to write and debug the Python scripts in the repository, to draft the structure and wording of this report and of our oral preparation, and to translate the report into English. All numbers in the report come from running the code and are inserted automatically, not written by the assistant. We checked the methodological choices so that each of us can explain and defend them.
 
-\section*{Déclaration de contribution}
+\section*{Contribution statement}
 \begin{center}\small
-\begin{tabular}{p{3.9cm}p{5.4cm}p{5.6cm}}\toprule
-Membre & Responsabilité (défense orale) & Étapes du pipeline \\ \midrule
-Max GUIRIEC & Données, EDA, features, pipeline ; coordination Git et rapport & Exigences 1, 2, 5 ; assemblage du dépôt \\
-Amaniel ASRAT & Modélisation et réglage & Exigences 3, 4, 6, 7 (déséquilibre, modèles, Optuna, journal) \\
-Zackary AICH & Interprétation, calibration, équité & Exigences 8, 9, 10 (SHAP, calibration, audit) \\ \bottomrule
+\begin{tabular}{p{3.6cm}p{5.6cm}p{5.8cm}}\toprule
+Member & Role (oral defence) & Pipeline stages \\ \midrule
+Max GUIRIEC & Data, EDA, features, pipeline; Git and report coordination & Requirements 1, 2, 5; repository assembly \\
+Amaniel ASRAT & Modelling and tuning & Requirements 3, 4, 6, 7 (imbalance, models, Optuna, run log) \\
+Zackary AICH & Interpretation, calibration, fairness & Requirements 8, 9, 10 (SHAP, calibration, audit) \\ \bottomrule
 \end{tabular}
 \end{center}
-Le code a été produit avec l'assistance de Claude Code (voir ci-dessus) ; chaque membre répond de l'ensemble du projet.
+The code was written with the help of Claude Code (see above); each member answers for the whole project.
 
 \clearpage
 \appendix
-\section{Hyperparamètres retenus}
+\section{Selected hyperparameters}
 \begin{table}[H]\centering
-\begin{tabular}{lp{11cm}}\toprule
-Modèle & Meilleurs paramètres (essai de meilleure PR-AUC en CV) \\ \midrule
+\begin{tabular}{lp{11.5cm}}\toprule
+Model & Best parameters (trial with the highest CV PR-AUC) \\ \midrule
 \TabParams \\ \bottomrule
 \end{tabular}
-\caption{Hyperparamètres des modèles finaux.}\label{tab:params}
+\caption{Hyperparameters of the final models.}\label{tab:params}
 \end{table}
 
-\section{Historique des essais Optuna}
-\begin{figure}[htbp]\centering
+\section{Optuna history}
+\begin{figure}[H]\centering
 \includegraphics[width=0.32\linewidth]{optuna_logreg_history.png}\hfill
 \includegraphics[width=0.32\linewidth]{optuna_random_forest_history.png}\hfill
 \includegraphics[width=0.32\linewidth]{optuna_xgboost_history.png}
-\caption{PR-AUC en CV par essai et meilleur score cumulé, pour chaque modèle.}
+\caption{CV PR-AUC of each trial and best score so far, for each model.}
 \end{figure}
 
-\section{Journal complet des essais (\NTrialsTotal{} essais)}
-Colonnes : modèle, numéro d'essai, PR-AUC moyenne et écart-type sur les 5 plis, ROC-AUC, F1, durée (s). Les paramètres de chaque essai et l'artefact associé figurent dans \texttt{runs/trials\_log.csv}.
-{\small
-\begin{longtable}{lrrrrrr}\toprule
-Modèle & Essai & PR-AUC & Écart-type & ROC-AUC & F1 & Durée \\ \midrule\endhead
-\TabLog \\ \bottomrule
+\section{Full run log (\NTrialsTotal{} trials)}\label{app:log}
+One row per trial number, the three models side by side. For each model: mean PR-AUC over the 5 folds, its standard deviation, mean F1 and duration in seconds. The parameters of every trial and the artefact it belongs to are in \texttt{runs/trials\_log.csv}.
+{\scriptsize\setlength{\tabcolsep}{3.5pt}
+\begin{longtable}{r|rrrr|rrrr|rrrr}\toprule
+ & \multicolumn{4}{c|}{Logistic regression} & \multicolumn{4}{c|}{Random forest} & \multicolumn{4}{c}{XGBoost} \\
+Trial & PR-AUC & Std & F1 & s & PR-AUC & Std & F1 & s & PR-AUC & Std & F1 & s \\ \midrule\endhead
+\TabLog \bottomrule
 \end{longtable}}
 \end{document}
