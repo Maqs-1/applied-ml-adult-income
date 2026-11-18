@@ -28,6 +28,21 @@ def explainer_for(model, X_bg):
 
 
 def main(n_sample: int = 1000, n_local: int = 4) -> None:
+    """Explique le score de la classe >50K sur un échantillon du test.
+
+    Dans le beeswarm, chaque point est une personne et l'axe horizontal
+    montre la contribution signée au score. La couleur encode la valeur
+    de la variable après prétraitement. Le graphique en barres et le CSV
+    classent les variables par moyenne des contributions absolues. Les
+    variables corrélées peuvent se partager l'importance et les valeurs
+    SHAP ne permettent pas d'attribuer un effet causal.
+
+    Chaque waterfall part de la valeur de référence et ajoute les
+    contributions locales. Pour XGBoost, cette somme est en log-odds.
+    Le JSON donne aussi la probabilité de la classe positive et les six
+    contributions de plus forte amplitude pour chaque cas disponible.
+    Le seuil appris sert à distinguer vrais et faux positifs et négatifs.
+    """
     cfg = load_config()
     final = json.loads(p(cfg["paths"]["results"]).read_text(encoding="utf-8"))["final_model"]
     art = joblib.load(p(f"models/{final}.joblib"))

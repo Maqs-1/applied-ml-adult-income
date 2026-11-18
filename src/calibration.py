@@ -24,6 +24,14 @@ from src.utils import load_config, load_split, p
 
 
 def diagnose(y, proba, n_bins=10) -> dict:
+    """Compare probabilité moyenne et fréquence observée par bac de quantiles.
+
+    La courbe trace la probabilité moyenne en abscisse et la part de
+    positifs en ordonnée. Sous la diagonale, les scores surestiment la
+    fréquence. Des quantiles répétés peuvent réduire le nombre de bacs.
+    La moyenne signée des écarts dans le JSON peut masquer des écarts
+    opposés qui se compensent.
+    """
     frac_pos, mean_pred = calibration_curve(y, proba, n_bins=n_bins, strategy="quantile")
     gap = mean_pred - frac_pos  # >0 : prédit plus haut que la réalité -> sur-confiant sur les positifs
     return {"bins_mean_pred": mean_pred.round(4).tolist(), "bins_frac_pos": frac_pos.round(4).tolist(),
@@ -32,6 +40,17 @@ def diagnose(y, proba, n_bins=10) -> dict:
 
 
 def main() -> None:
+    """Compare sur le test le modèle brut et sa version recalibrée.
+
+    La correction isotonique est apprise sur la validation avec le modèle
+    gelé. Le Brier mesure l'erreur quadratique moyenne des probabilités.
+    L'ECE agrège les écarts absolus entre score moyen et fréquence
+    observée, pondérés par les effectifs de bacs de largeur égale.
+    Pour ces deux scores, une valeur plus faible est préférable.
+    L'histogramme montre la répartition des probabilités, tandis que la
+    courbe de fiabilité compare ces probabilités aux fréquences réelles.
+    Les résultats figurent dans runs/calibration.json.
+    """
     cfg = load_config()
     final = json.loads(p(cfg["paths"]["results"]).read_text(encoding="utf-8"))["final_model"]
     art = joblib.load(p(f"models/{final}.joblib"))
