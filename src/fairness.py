@@ -71,10 +71,9 @@ def audit(y, pred, sens) -> dict:
             "equalized_odds_diff": round(float(equalized_odds_difference(y, pred, sensitive_features=sens)), 4)}
 
 
-def main() -> None:
-    cfg = load_config()
+def evaluation_predictions(cfg):
+    """Prépare les décisions avant et après mitigation sur le même test."""
     sens_col = cfg["features"]["sensitive"]
-    sec_col = cfg["features"]["sensitive_secondary"]
     final = json.loads(p(cfg["paths"]["results"]).read_text(encoding="utf-8"))["final_model"]
     art = joblib.load(p(f"models/{final}.joblib"))
     pipe, thr = art["pipeline"], art["threshold"]
@@ -89,6 +88,15 @@ def main() -> None:
                             predict_method="predict_proba", prefit=True)
     to.fit(X_va, y_va, sensitive_features=X_va[sens_col].to_numpy())
     pred_after = to.predict(X_te, sensitive_features=X_te[sens_col].to_numpy(), random_state=cfg["seed"])
+
+    return final, X_te, y_te, pred_before, pred_after, to
+
+
+def main() -> None:
+    cfg = load_config()
+    sens_col = cfg["features"]["sensitive"]
+    sec_col = cfg["features"]["sensitive_secondary"]
+    final, X_te, y_te, pred_before, pred_after, to = evaluation_predictions(cfg)
 
     out = {"model": final, "sensitive": sens_col, "constraint": "equalized_odds",
            "before": audit(y_te, pred_before, X_te[sens_col]),
