@@ -1,0 +1,22 @@
+{
+  "model": "xgboost",
+  "sensitive": "sex",
+  "metric": "equalized_odds_diff",
+  "method": "stratified_percentile_bootstrap",
+  "n_resamples": 1000,
+  "seed": 42,
+  "before": {
+    "estimate": 0.10600039548650075,
+    "ci_95": [
+      0.09459230493644964,
+      0.1408036024788064
+    ]
+  },
+  "after_threshold_optimizer": {
+    "estimate": 0.008847993523633635,
+    "ci_95": [
+      0.003156801039867266,
+      0.0532468772625949
+    ]
+  }
+}
