@@ -98,10 +98,6 @@ curl -X POST localhost:8000/predict -H "Content-Type: application/json" -d "{\"a
 
 La réponse contient la probabilité de dépasser 50 K$, le seuil appris et la décision.
 
-## Usage d'assistants IA
-
-Claude Code (Anthropic) a servi d'assistant d'écriture et de débogage du code, de rédaction du rapport et de traduction en anglais. Les chiffres du rapport proviennent de l'exécution du code. Chaque membre répond de l'ensemble du projet. Détails dans la section « Use of AI » du rapport.
-
 ## Limites connues
 
 Un seul split (pas de bootstrap sur les métriques de modèle), Optuna n'optimise que la PR-AUC, SHAP, calibration et équité sont rapportés sur le même test, et les données datent de 1994. Voir la section 9 du rapport.
