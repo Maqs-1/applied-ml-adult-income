@@ -3,18 +3,24 @@
 **Quand :** vendredi 20/11/2026, **16h15**, salle **EXT+** (d'après « ORAL DEFENSE TIMETABLE UPDATED.pdf »). Être devant la salle **dès 16h05**.
 **Format :** 7 min de présentation + 3 min de questions. Les trois membres parlent ; chacun doit pouvoir répondre sur **tout** le projet.
 
-## 1. Plan des 7 minutes (8 diapositives, environ 50 s chacune)
+## 1. Plan des 7 minutes (12 slides, 4 par orateur)
 
-| Temps | Qui | Diapo | Contenu | Chiffres à citer |
+Présentation : https://claude.ai/artifact/NbxKJETZinXzPAB7ciNUUd (le texte à dire est dans les notes de chaque slide).
+
+| Temps | Qui | Slide | Contenu | Chiffres à citer |
 |---|---|---|---|---|
-| 0:00-0:50 | **Max** | 1. Problème | Prédire revenu > 50 k\$ (Adult 1994), 48 842 lignes, 23,9 % de positifs. Pourquoi c'est déséquilibré et pourquoi PR-AUC. | baseline accuracy 0,761 mais rappel 0 ; baseline PR-AUC 0,239 |
-| 0:50-1:40 | **Max** | 2. Données et split | EDA (manquants sur 3 colonnes, capital très asymétrique), doublons retirés, split 60/20/20 stratifié cible × sexe, test intouché. | 29 274 / 9 758 / 9 758 ; femmes 10,9 % vs hommes 30,4 % |
-| 1:40-2:20 | **Max** | 3. Features et Pipeline | Un seul `Pipeline`, 5 variables créées, `sex` et `race` exclus du modèle, pas de fuite. | 76 colonnes |
-| 2:20-3:10 | **Amaniel** | 4. Déséquilibre et modèles | Repondération traitée comme hyperparamètre + seuil sur la validation. Progression logistique, Random Forest, XGBoost. | seuil XGBoost 0,653 ; F1 0,722 (seuil 0,5) → 0,741 |
-| 3:10-4:00 | **Amaniel** | 5. Optuna et résultats | 40 essais × 3 modèles, CV 5 plis sur le train, journal CSV. Tableau test. | PR-AUC test : 0,740 / 0,826 / **0,845** |
-| 4:00-4:50 | **Zackary** | 6. SHAP | Variables dominantes plausibles ; le statut marital est un proxy possible du sexe. 4 cas locaux. | top : `is_married`, gains en capital, `age_x_edu` |
-| 4:50-5:50 | **Zackary** | 7. Calibration | Sur-estime les positifs ; cause : repondération ; isotonique corrige. | proba moyenne 0,345 vs réel 0,239 ; ECE 0,106 → 0,011 |
-| 5:50-7:00 | **Zackary** | 8. Équité et conclusion | Écarts avant/après, coût de la mitigation, limites. | EOD 0,106 → 0,009 ; F1 0,741 → 0,681 ; précision des femmes 0,699 → 0,335 |
+| 0:00-0:10 | **Max** | 1. Couverture | Groupe 10, dataset Adult, la question posée. | 23,9 % gagnent plus de 50 k\$ |
+| 0:10-0:35 | **Max** | 2. Les trois questions | Score honnête ? Probabilités fiables ? Qui paie les erreurs ? Feuille de route des 10 exigences. | — |
+| 0:35-1:25 | **Max** | 3. EDA | 48 842 lignes, l'accuracy est un piège, le manque est informatif, écart hommes/femmes, statut marital = proxy du sexe. | accuracy 0,761 pour un modèle inutile ; 9,7 % ; femmes 10,9 % vs hommes 30,4 % ; 88,8 % des mariés sont des hommes |
+| 1:25-2:05 | **Max** | 4. Split honnête | 60/20/20, un rôle par ensemble, test ouvert une fois ; doublons retirés avant ; stratifié cible × sexe. Passe la parole. | 29 274 / 9 758 / 9 758 ; 52 doublons |
+| 2:05-2:40 | **Amaniel** | 5. Pipeline | Un seul `Pipeline`, 5 variables créées, `sex` et `race` exclus du modèle, pas de fuite. | 76 entrées |
+| 2:40-3:25 | **Amaniel** | 6. Déséquilibre | PR-AUC ; pondération choisie par Optuna ; seuil choisi sur la validation ; SMOTE écarté. | LogReg 0,731 / 0,734 ; seuil XGBoost 0,653 ; F1 0,722 → 0,741 |
+| 3:25-4:10 | **Amaniel** | 7. Optuna et journal | 3 × 40 essais, CV 5 plis sur le train, `trials_log.csv`, incident du premier run. | LogReg : 36/40 essais à 0,005 du meilleur |
+| 4:10-5:00 | **Amaniel** | 8. Résultats test | Ce que chaque modèle apporte ; trois profils d'erreurs. Passe la parole. | PR-AUC 0,239 → 0,740 → 0,826 → **0,845** |
+| 5:00-5:40 | **Zackary** | 9. SHAP | Variables plausibles ; statut marital = proxy du sexe ; formes des effets ; 4 cas locaux. | marié +0,42 / non marié −0,75 |
+| 5:40-6:20 | **Zackary** | 10. Calibration | Sur-confiant vers « haut revenu » ; cause : pondération ; correction isotonique. | 0,345 prédit vs 0,239 réel ; ECE 0,106 → 0,011 |
+| 6:20-6:50 | **Zackary** | 11. Équité | Le modèle classe mieux les femmes, c'est le seuil unique qui crée l'écart ; ThresholdOptimizer et son coût. | EOD 0,106 → 0,009 ; F1 0,741 → 0,681 ; précision des femmes 0,699 → 0,335 |
+| 6:50-7:00 | **Zackary** | 12. Nos trois réponses | Réponses aux trois questions, limites, merci. | — |
 
 Conseils : (1) répéter à voix haute au moins une fois avec un chronomètre ; (2) chacun connaît les chiffres des autres ; (3) message final : « un bon modèle ne suffit pas : on a mesuré sa calibration et son équité, et chaque correction a un prix ».
 
